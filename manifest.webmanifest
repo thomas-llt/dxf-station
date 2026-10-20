@@ -9,12 +9,52 @@
   "background_color": "#eef0ec",
   "theme_color": "#e8590c",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "file_handlers": [
-    { "action": "./", "accept": { "application/dxf": [".dxf"], "image/vnd.dxf": [".dxf"], "image/x-dxf": [".dxf"] } }
+    {
+      "action": "./",
+      "accept": {
+        "application/dxf": [
+          ".dxf"
+        ],
+        "image/vnd.dxf": [
+          ".dxf"
+        ],
+        "image/x-dxf": [
+          ".dxf"
+        ]
+      },
+      "icons": [
+        {
+          "src": "dxf-file-256.png",
+          "sizes": "256x256",
+          "type": "image/png"
+        },
+        {
+          "src": "dxf-file-64.png",
+          "sizes": "64x64",
+          "type": "image/png"
+        }
+      ]
+    }
   ],
-  "launch_handler": { "client_mode": "focus-existing" }
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  }
 }
