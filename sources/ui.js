@@ -1836,8 +1836,8 @@
     const msg = $('dlMsg'), b = $('saveBtn');
     if (!S.fh) { $('dlBtn').click(); return; }
     if (!S.fhOk && !b.classList.contains('armed')) {
-      b.classList.add('armed'); $('saveLabel').textContent = 'Confirmer : remplacer';
-      msg.textContent = 'Attention : « ' + S.fh.name + ' » est le fichier reçu. Il sera remplacé par la version nettoyée (calques retirés, mètres…). Clique encore pour confirmer, ou utilise « Enregistrer sous… » pour garder l\'original.';
+      b.classList.add('armed'); $('saveLabel').textContent = 'Remplacer ?';
+      msg.innerHTML = '<b style="color:var(--bad)">Remplacer le fichier reçu ?</b> « ' + esc(S.fh.name) + ' » sera écrasé par la version nettoyée. Reclique sur <b>Remplacer ?</b> pour confirmer, ou utilise <b>Enregistrer sous…</b> pour garder l\'original.';
       clearTimeout(saveArm); saveArm = setTimeout(updateSaveUI, 6000); return;
     }
     try {

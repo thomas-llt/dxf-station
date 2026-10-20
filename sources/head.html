@@ -212,10 +212,8 @@ details.fold:not([open]) { gap: 0; }
 .sizes .lim { color: var(--muted); font-size: 12.5px; text-align: right; }
 .exp-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
 .export .btn.primary { justify-content: center; padding: 10px; font-size: 15px; }
-.saverow { display: flex; gap: 8px; }
-.saverow .btn { flex: 1 1 0; min-width: 0; justify-content: center; padding: 10px 8px; }
-.saverow #dlBtn { flex: 0 0 auto; font-size: 14px; padding-inline: 10px; }
-.saverow .btn span { overflow: hidden; text-overflow: ellipsis; }
+.saverow { display: flex; flex-wrap: wrap; gap: 8px; }
+.saverow .btn { flex: 1 1 auto; min-width: max-content; justify-content: center; padding: 10px 12px; }
 .saverow .btn.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
 #saveTarget { font-family: var(--f-mono); font-size: 11.5px; overflow-wrap: anywhere; }
 #dlMsg { font-size: 12.5px; min-height: 1em; }
@@ -305,7 +303,7 @@ details.fold:not([open]) { gap: 0; }
 
 <div class="app">
   <header class="top">
-    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.4</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.5</span></div>
     <div class="fileinfo" id="fileinfo"></div>
     <div class="spacer"></div>
     <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
