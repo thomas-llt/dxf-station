@@ -1,0 +1,466 @@
+<title>Nettoyeur DXF Station</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='#e8590c'/%3E%3Cpath d='M8 20h48M8 44h48M20 8v48M44 8v48' stroke='#fff' stroke-opacity='.38' stroke-width='2.5'/%3E%3Ccircle cx='32' cy='32' r='11' fill='none' stroke='#fff' stroke-width='4.5'/%3E%3Cpath d='M32 10v11M32 43v11M10 32h11M43 32h11' stroke='#fff' stroke-width='4.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='#fff'/%3E%3C/svg%3E">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout : bandeau de constat en haut, panneau de réglages à gauche, plan plein cadre à droite (empilé sur téléphone) */
+:root {
+  --bg: #eef0ec; --panel: #ffffff; --fg: #1b211e; --muted: #5f6a64; --line: #d6dbd5; --soft: #f5f6f3;
+  --accent: #e8590c; --accent-fg: #ffffff; --ok: #2f8a4e; --warn: #b7791f; --bad: #c53030;
+  --canvas: #101513; --canvas-fg: #c9d1cc;
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "Barlow", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --r: 6px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --panel: #1a1f1c; --fg: #e5e9e6; --muted: #98a39d; --line: #2c3430; --soft: #202623;
+  --accent: #ff7a2e; --accent-fg: #1a0d04; --ok: #5cc27e; --warn: #e0a84a; --bad: #f07070; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121614; --panel: #1a1f1c; --fg: #e5e9e6; --muted: #98a39d; --line: #2c3430; --soft: #202623;
+  --accent: #ff7a2e; --accent-fg: #1a0d04; --ok: #5cc27e; --warn: #e0a84a; --bad: #f07070; color-scheme: dark }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--f-body); font-size: 14px; line-height: 1.4; }
+* { box-sizing: border-box; }
+button, input, select { font: inherit; color: inherit; }
+.app { height: 100%; display: flex; flex-direction: column; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; gap: 10px; }
+header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand .logo { width: 32px; height: 32px; flex: none; }
+.brand h1 { font-family: var(--f-display); font-weight: 700; font-size: 24px; letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+.brand h1 span { color: var(--accent); }
+.brand .ver { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; white-space: nowrap; }
+.fileinfo { color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fileinfo b { color: var(--fg); font-weight: 600; }
+.sample-tag { font-family: var(--f-display); font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; background: var(--accent); color: var(--accent-fg); padding: 2px 8px; border-radius: 3px; }
+.spacer { flex: 1; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); padding: 7px 12px; border-radius: var(--r); cursor: pointer; font-weight: 500; white-space: nowrap; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.btn svg { width: 16px; height: 16px; }
+
+/* Accueil */
+.app > * { flex: none; }
+.app > .work, .app > .home { flex: 1 1 auto; min-height: 0; }
+.home { display: flex; flex-direction: column; gap: 16px; min-height: 0; padding-bottom: 8px; }
+.dropzone { flex: 1; min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 32px 20px; cursor: pointer;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 10px; color: var(--fg);
+  background-color: var(--panel);
+  background-image: linear-gradient(color-mix(in srgb, var(--fg) 6%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--fg) 6%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px; transition: border-color .15s, background-color .15s; }
+.dropzone:hover, .dropzone:focus-visible { border-color: var(--accent); outline: none; }
+.dropzone.over { border-color: var(--accent); border-style: solid; background-color: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+.dz-ico { width: 64px; height: 64px; color: var(--accent); }
+.dropzone h2 { font-family: var(--f-display); font-weight: 700; font-size: clamp(24px, 3.4vw, 36px); text-transform: uppercase; letter-spacing: .02em; margin: 0; text-wrap: balance; }
+.dropzone p { margin: 0; color: var(--muted); font-size: 15px; }
+.dropzone .lnk { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.dz-btn { margin-top: 8px; padding: 10px 18px; font-size: 15px; pointer-events: none; }
+.homemsg { min-height: 1.2em; color: var(--bad) !important; font-size: 13.5px !important; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; counter-reset: st; }
+.steps li { counter-increment: st; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.steps li::before { content: counter(st); font-family: var(--f-display); font-weight: 700; font-size: 22px; color: var(--accent); line-height: 1; }
+.steps b { font-family: var(--f-display); font-weight: 600; font-size: 17px; text-transform: uppercase; letter-spacing: .03em; }
+.steps span { color: var(--muted); font-size: 13px; }
+.privacy { margin: 0; color: var(--muted); font-size: 12.5px; text-align: center; }
+@media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .steps li:last-child { grid-column: span 2; } .app.is-home { height: auto; } .dropzone { min-height: 260px; } }
+@media (prefers-reduced-motion: reduce) { .dropzone { transition: none; } }
+
+/* Onglets des plans */
+.plans { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.plans:empty { display: none; }
+.ptab { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--panel); border-radius: 5px; padding: 5px 6px 5px 10px; cursor: pointer; font-size: 13px; max-width: 260px; }
+.ptab:hover { border-color: var(--muted); }
+.ptab.cur { border-color: var(--fg); box-shadow: inset 0 -3px 0 var(--accent); font-weight: 600; }
+.ptab .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ptab .bd { font-family: var(--f-display); font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+.ptab .bd.ref { background: var(--soft); color: var(--muted); border: 1px solid var(--line); }
+.ptab .bd.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.ptab .bd.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); color: var(--bad); }
+.ptab .bd.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.ptab .x { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 4px; border-radius: 3px; }
+.ptab .x:hover { color: var(--bad); }
+.ptab .rn { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; display: grid; place-items: center; border-radius: 3px; }
+.ptab .rn:hover { color: var(--accent); }
+.ptab .rn svg { width: 13px; height: 13px; }
+.ptab input.tabname { font: inherit; font-weight: 600; border: 1px solid var(--accent); border-radius: 3px; padding: 1px 6px; width: 190px; max-width: 46vw; background: var(--soft); }
+.padd { border: 1px dashed var(--line); background: none; border-radius: 5px; padding: 5px 10px; cursor: pointer; color: var(--muted); font-size: 13px; }
+.padd:hover { border-color: var(--accent); color: var(--accent); }
+.drop small { display: block; font-family: var(--f-body); font-size: 15px; text-transform: none; letter-spacing: 0; margin-top: 6px; opacity: .9; }
+
+/* Bandeau de constat */
+.findings { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+.app.no-stats .findings { display: none; }
+#statsLabel b { font-family: var(--f-mono); font-weight: 500; font-size: 12.5px; }
+.find { display: flex; flex-direction: column; gap: 1px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--muted); border-radius: 4px; padding: 6px 10px; min-width: 0; }
+.find .k { font-family: var(--f-display); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.find .v { font-family: var(--f-mono); font-size: 13.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.find.fix { border-left-color: var(--accent); }
+.find.ok { border-left-color: var(--ok); }
+.find.bad { border-left-color: var(--bad); }
+
+.work { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 10px; min-height: 0; }
+aside { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.sec { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.sec h2 { font-family: var(--f-display); font-size: 14px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin: 0; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.sec h2 .count { font-family: var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--fg); font-weight: 400; font-size: 12.5px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row label { color: var(--muted); }
+select, input[type=text], input[type=number] { background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; min-width: 0; }
+.dims { font-family: var(--f-mono); font-size: 13px; font-variant-numeric: tabular-nums; }
+.hint { color: var(--muted); font-size: 12.5px; }
+.hint.warn { color: var(--warn); }
+#refSec .row .btn { padding: 5px 10px; font-size: 13px; }
+.xf { display: flex; flex-direction: column; gap: 6px; border-top: 1px dashed var(--line); border-bottom: 1px dashed var(--line); padding-block: 8px; }
+.xfh { font-family: var(--f-display); font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg); }
+.xfc { gap: 6px; font-size: 13px; }
+.xfc span { color: var(--muted); }
+.xfc input { width: 78px; font-family: var(--f-mono); font-size: 12.5px; text-align: right; }
+#xfInfo.on { color: var(--ok); }
+.refline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.refline .sw { width: 14px; height: 3px; background: #4dabf7; border-radius: 2px; }
+.refline b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.refline select { padding: 2px 6px; font-size: 12.5px; }
+.refline .lnk { border: 0; background: none; color: var(--muted); text-decoration: underline; cursor: pointer; padding: 0; font-size: 12.5px; }
+.verdict { border-radius: 4px; padding: 7px 9px; font-size: 13px; line-height: 1.45; border-left: 3px solid var(--muted); background: var(--soft); margin-top: 6px; }
+.verdict.ok { border-left-color: var(--ok); }
+.verdict.bad { border-left-color: var(--bad); }
+.verdict.warn { border-left-color: var(--warn); }
+.verdict b { font-weight: 600; }
+.verdict .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+
+details.fold summary h2 { flex: 1; min-width: 0; flex-wrap: wrap; row-gap: 2px; }
+details.fold summary h2 .count { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+details.fold summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.count.warn { color: var(--warn) !important; }
+.count.bad { color: var(--bad) !important; }
+.count.ok { color: var(--ok) !important; }
+.fold-h { font-family: var(--f-display); font-size: 14px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin: 0; color: var(--muted); display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.fold-h .count { font-family: var(--f-mono); letter-spacing: 0; text-transform: none; color: var(--fg); font-weight: 400; font-size: 12.5px; }
+.fold-h::after { content: "−"; margin-left: auto; font-family: var(--f-mono); color: var(--muted); font-size: 16px; letter-spacing: 0; }
+.fold-h:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.layers-sec.closed { flex: none; min-height: 0; }
+.layers-sec.closed .fold-h::after { content: "+"; }
+.layers-sec.closed .layers-tools > :not(.fold-h), .layers-sec.closed .layers { display: none; }
+.layers-sec.closed .layers-tools { padding-bottom: 12px; }
+.layers-sec { flex: 1; min-height: 300px; display: flex; flex-direction: column; border-bottom: 1px solid var(--line); }
+.layers-tools { padding: 10px 14px 8px; display: flex; flex-direction: column; gap: 8px; }
+.layers-tools .row .btn { padding: 4px 9px; font-size: 13px; }
+#layerFilter { width: 100%; }
+.layers { overflow-y: auto; flex: 1; padding: 0 6px 8px; }
+.lay { display: grid; grid-template-columns: 20px 14px minmax(0,1fr) auto 22px 22px 26px; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.lay:hover { background: var(--soft); }
+.lay input { margin: 0; accent-color: var(--accent); width: 16px; height: 16px; cursor: pointer; }
+.lay .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(127,127,127,.6); padding: 0; cursor: pointer; }
+.lay .sw:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+.color-pop { position: fixed; z-index: 50; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.25); padding: 10px; width: 228px; display: flex; flex-direction: column; gap: 8px; }
+.color-pop .t { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.color-pop .grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.color-pop .grid button { aspect-ratio: 1; border-radius: 3px; border: 1px solid rgba(127,127,127,.5); cursor: pointer; padding: 0; }
+.color-pop .grid button.cur { outline: 2px solid var(--accent); outline-offset: 1px; }
+.color-pop .btn { padding: 4px 8px; font-size: 12.5px; justify-content: center; }
+.layer-pop { width: 290px; }
+.layer-pop .nl { display: flex; gap: 6px; }
+.layer-pop .nl input { flex: 1; min-width: 0; font-size: 13px; padding: 5px 8px; text-transform: uppercase; }
+.layer-pop .lst { max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; border-top: 1px solid var(--line); padding-top: 6px; }
+.layer-pop .lst button { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto; gap: 8px; align-items: center; text-align: left; border: 0; background: none; padding: 5px 6px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.layer-pop .lst button:hover, .layer-pop .lst button:focus-visible { background: var(--soft); outline: none; }
+.layer-pop .lst i { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(127,127,127,.5); }
+.layer-pop .lst span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-pop .lst em { font-style: normal; font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.newlayer { display: flex; gap: 6px; }
+.newlayer input { flex: 1; min-width: 0; text-transform: uppercase; }
+.newlayer .btn { padding: 5px 10px; font-size: 13px; }
+.lay .tag.new { color: var(--ok); }
+.tb.mv { background: #2b6cb0; border-color: #2b6cb0; color: #fff; }
+.lay .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.lay.off .nm { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(127,127,127,.6); }
+.lay .n { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lay .solo { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 3px; font-family: var(--f-display); font-weight: 600; font-size: 11px; letter-spacing: .05em; }
+.lay .solo:hover { color: var(--accent); }
+.lay .del { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 3px; display: grid; place-items: center; }
+.lay .del:hover { color: var(--bad); }
+.lay .del.armed { background: var(--bad); color: #fff; }
+.lay .del svg { width: 14px; height: 14px; }
+.lay .tag.merge { color: #2b6cb0; }
+.lay .ren { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 2px; border-radius: 3px; display: grid; place-items: center; }
+.lay .ren:hover { color: var(--accent); }
+.lay .ren svg { width: 14px; height: 14px; }
+.lay input.rn { width: 100%; font-size: 13px; padding: 2px 6px; border: 1px solid var(--accent); border-radius: 3px; background: var(--soft); text-transform: uppercase; font-family: var(--f-mono); }
+.lay .was { display: block; font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: none; }
+.lay .tag { font-size: 10.5px; color: var(--warn); margin-left: 4px; }
+
+details.fold summary { list-style: none; cursor: pointer; display: flex; align-items: center; }
+details.fold summary::-webkit-details-marker { display: none; }
+details.fold summary::after { content: "+"; margin-left: auto; font-family: var(--f-mono); color: var(--muted); font-size: 16px; }
+details.fold[open] summary::after { content: "−"; }
+details.fold[open] { gap: 8px; }
+details.fold:not([open]) { gap: 0; }
+.opts label { display: flex; gap: 8px; align-items: center; color: var(--fg); cursor: pointer; }
+.opts input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }
+
+.export { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--soft); }
+.gauge { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+.gauge i { display: block; height: 100%; background: var(--ok); width: 0; transition: width .2s; }
+.gauge.over i { background: var(--bad); }
+.sizes { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sizes .big { font-family: var(--f-display); font-weight: 700; font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.sizes .lim { color: var(--muted); font-size: 12.5px; text-align: right; }
+.exp-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.export .btn.primary { justify-content: center; padding: 10px; font-size: 15px; }
+#dlMsg { font-size: 12.5px; min-height: 1em; }
+
+/* Plan */
+.stage { position: relative; background: var(--canvas); border-radius: var(--r); overflow: hidden; min-height: 0; border: 1px solid var(--line); touch-action: none; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
+#cv.measure { cursor: crosshair; }
+#cv.drag { cursor: grabbing; }
+.toolbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 6px; flex-wrap: wrap; right: 10px; pointer-events: none; }
+.toolbar > * { pointer-events: auto; }
+.tb { background: rgba(16,21,19,.86); color: var(--canvas-fg); border: 1px solid rgba(255,255,255,.14); padding: 6px 10px; border-radius: 5px; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; font-size: 13px; }
+.tb:hover { border-color: rgba(255,255,255,.35); }
+.tb.on { background: #e8590c; border-color: #e8590c; color: #fff; }
+.tb svg { width: 15px; height: 15px; }
+.erasebar { display: contents; }
+.seg { display: inline-flex; }
+.seg .tb:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.seg .tb:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; }
+.seg .tb:not(:first-child):not(:last-child) { border-radius: 0; border-left: 0; }
+.tb.lbl { cursor: default; gap: 6px; }
+.tb.lbl input::placeholder { color: rgba(255,255,255,.4); font-family: var(--f-body); }
+.tb.lbl input { width: 58px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.25); color: #fff; border-radius: 3px; padding: 2px 6px; font-family: var(--f-mono); font-size: 12.5px; text-align: right; }
+.tb.lbl select { background: #1d2420; border: 1px solid rgba(255,255,255,.25); color: #fff; border-radius: 3px; padding: 2px 4px; font-size: 12.5px; max-width: 170px; }
+.hist-box { position: absolute; left: 10px; top: 96px; width: 330px; max-width: calc(100% - 20px); max-height: calc(100% - 150px); display: flex; flex-direction: column; background: rgba(16,21,19,.96); border: 1px solid rgba(255,255,255,.18); border-radius: 6px; color: var(--canvas-fg); font-size: 12.5px; z-index: 5; }
+.hist-box .hh { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 12px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.hist-box .hh b { color: #fff; font-size: 13.5px; }
+.hist-box .hh .sp { flex: 1; }
+.hist-box .hh .tb { font-size: 12px; padding: 4px 8px; }
+.hist-box .hx { border: 0; background: none; color: var(--canvas-fg); font-size: 18px; cursor: pointer; padding: 0 4px; line-height: 1; }
+.hist-box ol { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; min-height: 0; }
+.hist-box li { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; border-left: 3px solid transparent; }
+.hist-box li:hover { background: rgba(255,255,255,.07); }
+.hist-box li .t { font-family: var(--f-mono); font-size: 11.5px; color: #8f9a94; font-variant-numeric: tabular-nums; }
+.hist-box li .l { color: #e6ebe8; overflow-wrap: anywhere; }
+.hist-box li.cur { border-left-color: #ff8a3d; background: rgba(255,138,61,.12); }
+.hist-box li.cur .l::after { content: "  ← état actuel"; color: #ff9a5c; font-size: 11.5px; }
+.hist-box li.undone .l { color: #7d8782; text-decoration: line-through; text-decoration-color: rgba(125,135,130,.6); }
+.hist-box .hnote { padding: 8px 12px; border-top: 1px solid rgba(255,255,255,.12); color: #8f9a94; font-size: 11.5px; line-height: 1.45; }
+.hist-box .hreset { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-top: 1px solid rgba(255,255,255,.12); }
+.hist-box .hreset span { color: #8f9a94; font-size: 11.5px; }
+.tb.rst { border-color: rgba(240,112,112,.6); color: #ffb3b3; white-space: nowrap; flex: none; }
+.tb.rst.armed { background: #c53030; border-color: #c53030; color: #fff; }
+#histCount { font-family: var(--f-mono); font-size: 11.5px; opacity: .8; }
+.info-box { position: absolute; right: 10px; bottom: 10px; font-size: 12.5px; color: var(--canvas-fg); background: rgba(16,21,19,.94); border: 1px solid rgba(255,255,255,.18); padding: 9px 11px; border-radius: 5px; line-height: 1.5; max-width: min(340px, calc(100% - 20px)); display: flex; flex-direction: column; gap: 4px; }
+.info-box .lname { display: flex; align-items: center; gap: 7px; color: #fff; font-weight: 600; font-size: 13.5px; word-break: break-all; }
+.info-box .lname i { width: 12px; height: 12px; border-radius: 2px; flex: none; border: 1px solid rgba(255,255,255,.3); }
+.info-box .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+.info-box .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.info-box .acts .tb { font-size: 12px; padding: 4px 8px; }
+.info-box .muted { color: #9aa59f; font-size: 12px; }
+.dup-box { position: absolute; top: 80px; right: 10px; font-size: 12.5px; color: var(--canvas-fg); background: rgba(16,21,19,.92); border: 1px solid rgba(255,255,255,.14); padding: 8px 10px; border-radius: 5px; line-height: 1.5; max-width: min(330px, calc(100% - 20px)); }
+.dup-box b { font-family: var(--f-mono); font-size: 14px; font-weight: 500; }
+.dup-box .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.dup-box p { margin: 0 0 4px; }
+.dup-box .note { color: #9aa59f; font-size: 12px; margin: 4px 0 0; }
+.tb.del { background: #c53030; border-color: #c53030; color: #fff; }
+.tb:disabled { opacity: .45; cursor: default; }
+.erase-hint { position: absolute; right: 10px; bottom: 10px; font-size: 12px; color: var(--canvas-fg); background: rgba(16,21,19,.9); border: 1px solid rgba(255,255,255,.14); padding: 8px 10px; border-radius: 5px; line-height: 1.55; max-width: calc(100% - 20px); }
+.erase-hint b { color: #fff; font-weight: 600; }
+#cv.erase { cursor: default; }
+@media (max-width: 900px) { .erase-hint { display: none; } }
+.readout { position: absolute; left: 10px; bottom: 10px; font-family: var(--f-mono); font-size: 12px; color: var(--canvas-fg); background: rgba(16,21,19,.8); padding: 4px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.measure-box { position: absolute; right: 10px; bottom: 10px; font-family: var(--f-mono); font-size: 12.5px; color: #fff; background: rgba(16,21,19,.92); border: 1px solid #e8590c; padding: 8px 10px; border-radius: 5px; font-variant-numeric: tabular-nums; line-height: 1.5; }
+.measure-box b { font-size: 17px; color: #ff9a5c; font-weight: 500; }
+.scalebar { position: absolute; right: 12px; top: 52px; color: var(--canvas-fg); font-family: var(--f-mono); font-size: 11px; text-align: right; pointer-events: none; }
+.stage.light { background: #ffffff; }
+.stage.light .scalebar { color: #333; }
+.stage.light .scalebar i { border-color: #333; }
+.scalebar i { display: block; height: 6px; border: 1px solid var(--canvas-fg); border-top: 0; margin-top: 2px; margin-left: auto; }
+.drop { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(232,89,12,.18); border: 3px dashed #e8590c; color: #fff; font-family: var(--f-display); font-size: 28px; letter-spacing: .04em; text-transform: uppercase; pointer-events: none; }
+.busy { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(16,21,19,.75); color: #fff; font-family: var(--f-display); font-size: 20px; letter-spacing: .04em; }
+.err { background: var(--panel); border: 1px solid var(--bad); color: var(--bad); padding: 10px 12px; border-radius: var(--r); }
+
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; }
+  .app > .work { flex: none; }
+  .work { grid-template-columns: minmax(0, 1fr); }
+  .stage { height: 62vh; order: -1; }
+  .layers { max-height: 46vh; }
+  .findings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .find .v { font-size: 12.5px; white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) { .gauge i { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20</span></div>
+    <div class="fileinfo" id="fileinfo"></div>
+    <div class="spacer"></div>
+    <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
+    <button class="btn" id="statsBtn" type="button" hidden aria-pressed="true" title="Afficher ou masquer le bandeau de statistiques"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span id="statsLabel">Masquer les stats</span></button>
+    <button class="btn primary" id="openBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>Ouvrir des DXF</button>
+  </header>
+
+  <nav class="plans" id="plans" aria-label="Plans ouverts"></nav>
+  <section class="home" id="home" hidden>
+    <div class="dropzone" id="homeDrop" role="button" tabindex="0" aria-label="Choisir des fichiers DXF">
+      <svg class="dz-ico" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 40v10h36V40"/><path d="M32 8v30M22 28l10 10 10-10"/></svg>
+      <h2>Glisse ici les DXF du bureau d'études</h2>
+      <p>ou <span class="lnk">clique pour les choisir</span> · un seul plan ou tous les étages d'un coup</p>
+      <span class="btn primary dz-btn">Choisir des fichiers DXF</span>
+      <p class="homemsg" id="homeMsg" role="status"></p>
+    </div>
+    <ol class="steps">
+      <li><b>Nettoie</b><span>Purge les blocs inutilisés, textes, cotes, hachures et traits en double.</span></li>
+      <li><b>Passe en mètres</b><span>Reconnaît un plan en mm ou en cm et le met à l'échelle.</span></li>
+      <li><b>Te laisse trier</b><span>Calques à garder, traits à effacer, points à créer sur les croisements.</span></li>
+      <li><b>Contrôle l'origine</b><span>Compare les étages entre eux et chiffre tout décalage X / Y.</span></li>
+      <li><b>Exporte</b><span>DXF R12 léger, sous les 3 Mo, et les points en CSV pour la station.</span></li>
+    </ol>
+    <p class="privacy">Les plans sont lus sur ton ordinateur : rien n'est envoyé sur internet.</p>
+  </section>
+
+  <div class="findings" id="findings"></div>
+
+  <div class="work">
+    <aside>
+      <details class="sec fold" id="scaleBox">
+        <summary><h2>Échelle <span class="count" id="scaleSum"></span></h2></summary>
+        <div class="row">
+          <label for="unit">Plan reçu en</label>
+          <select id="unit">
+            <option value="1">mètres</option>
+            <option value="0.1">décimètres</option>
+            <option value="0.01">centimètres</option>
+            <option value="0.001">millimètres</option>
+            <option value="0.0254">pouces</option>
+            <option value="0.3048">pieds</option>
+            <option value="custom">facteur libre…</option>
+          </select>
+          <input type="number" id="factor" step="any" value="1" hidden style="width:110px" aria-label="Facteur vers mètres">
+        </div>
+        <div class="dims" id="dims"></div>
+        <div class="hint" id="unitHint"></div>
+      </details>
+
+      <details class="sec fold" id="refSec">
+        <summary><h2>Origine X / Y <span class="count" id="originSum"></span></h2></summary>
+        <div class="dims" id="originInfo"></div>
+        <div class="xf">
+          <div class="xfh">Recaler le plan dans ton repère</div>
+          <div class="row xfc"><span>Point choisi =</span> X <input type="text" id="xfX" value="0" inputmode="decimal" autocomplete="off" aria-label="Coordonnée X du point d'origine choisi"> Y <input type="text" id="xfY" value="0" inputmode="decimal" autocomplete="off" aria-label="Coordonnée Y du point d'origine choisi"> m</div>
+          <div class="row">
+            <button class="btn" id="xfStart" type="button">Choisir l'origine et l'axe X…</button>
+            <button class="btn" id="xfClear" type="button" hidden>Annuler le recalage</button>
+            <button class="btn" id="xfAll" type="button" hidden>Appliquer aux autres étages</button>
+          </div>
+          <div class="hint" id="xfInfo"></div>
+        </div>
+        <div class="row">
+          <input type="file" id="refFile" accept=".dxf,.DXF" hidden>
+          <button class="btn" id="refOpen" type="button">Comparer à un autre étage…</button>
+          <button class="btn" id="refKeep" type="button" title="Ce plan servira de référence pour le prochain fichier ouvert">Garder ce plan en référence</button>
+        </div>
+        <div id="refInfo" hidden></div>
+      </details>
+
+      <div class="layers-sec">
+        <div class="layers-tools">
+          <h2 class="fold-h" id="layFold" role="button" tabindex="0" aria-expanded="true">Calques <span class="count" id="layCount"></span></h2>
+          <div class="row">
+            <button class="btn" id="allOn" type="button">Tout</button>
+            <button class="btn" id="allOff" type="button">Aucun</button>
+            <button class="btn" id="invert" type="button">Inverser</button>
+            <button class="btn" id="newLayerBtn" type="button">+ Nouveau calque</button>
+            <button class="btn" id="applyAll" type="button" hidden title="Copier les calques cochés, couleurs et noms vers les autres plans">→ tous les plans</button>
+          </div>
+          <div class="newlayer" id="newLayerForm" hidden>
+            <input type="text" id="nlName" maxlength="31" placeholder="Nom du calque, ex. IMPLANTATION" autocomplete="off" aria-label="Nom du nouveau calque">
+            <button class="btn primary" id="nlOk" type="button">Créer</button>
+            <button class="btn" id="nlCancel" type="button">Annuler</button>
+          </div>
+          <input type="text" id="layerFilter" placeholder="Filtrer les calques (ex. voile, axe…)" autocomplete="off">
+        </div>
+        <div class="layers" id="layers"></div>
+      </div>
+
+      <details class="sec opts fold" id="optsBox">
+        <summary><h2>Options <span class="count" id="optSum"></span></h2></summary>
+        <label><input type="checkbox" id="optExplode" checked> Polylignes → lignes et arcs</label>
+        <label><input type="checkbox" id="optDedupe" checked> Supprimer les traits en double</label>
+        <label><input type="checkbox" id="optPoints" checked> Garder les points</label>
+        <div class="row"><label for="optDec">Précision</label>
+          <select id="optDec"><option value="3" selected>1 mm</option><option value="4">0,1 mm</option><option value="2">1 cm</option></select>
+        </div>
+      </details>
+
+      <div class="export">
+        <div class="sizes"><div class="big" id="outSize">–</div><div class="lim">limite station<br>3 Mo</div></div>
+        <div class="gauge" id="gauge"><i></i></div>
+        <div class="exp-meta" id="outMeta"></div>
+        <button class="btn primary" id="dlBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg><span id="dlLabel">Télécharger le DXF propre</span></button>
+        <button class="btn" id="dlAllBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg><span id="dlAllLabel">Tout télécharger</span></button>
+        <button class="btn" id="csvBtn" type="button" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg><span id="csvLabel">Exporter les points (.csv)</span></button>
+        <div id="dlMsg" class="hint"></div>
+      </div>
+    </aside>
+
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="toolbar">
+        <button class="tb" id="fitBtn" type="button" title="Recadrer (double-clic)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Recadrer</button>
+        <button class="tb" id="measBtn" type="button" title="Mesurer une distance entre deux points"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17L17 3l4 4L7 21z M7 13l2 2M10 10l2 2M13 7l2 2"/></svg>Mesurer</button>
+        <button class="tb" id="pointBtn" type="button" title="Créer un point sur un croisement de traits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v7M12 15v7M2 12h7M15 12h7"/><circle cx="12" cy="12" r="3"/></svg>Créer un point</button>
+        <span class="erasebar" id="pointBar" hidden>
+          <button class="tb" id="ptUndoBtn" type="button" disabled>Annuler</button>
+        </span>
+        <button class="tb" id="lineBtn" type="button" title="Tracer une ligne : relier deux points ou créer une parallèle décalée"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20L20 4"/><circle cx="4" cy="20" r="2"/><circle cx="20" cy="4" r="2"/></svg>Tracer</button>
+        <span class="erasebar" id="lineBar" hidden>
+          <span class="seg"><button class="tb on" id="ltJoin" type="button" title="Une ligne entre deux points accrochés">Relier 2 points</button><button class="tb" id="ltChain" type="button" title="Une suite de segments, chaque clic repart du précédent">En continu</button><button class="tb" id="ltRect" type="button" title="Rectangle par deux coins ou par dimensions">Rectangle</button><button class="tb" id="ltCircle" type="button" title="Cercle par centre et rayon">Cercle</button><button class="tb" id="ltOff" type="button" title="Ligne parallèle à une ligne existante">Parallèle</button><button class="tb" id="ltTrim" type="button" title="Couper un trait aux intersections (retirer le morceau cliqué)">Couper</button></span>
+          <label class="tb lbl" id="rectWrap" hidden>L <input type="text" id="rectW" placeholder="libre" inputmode="decimal" autocomplete="off" aria-label="Longueur du rectangle en mètres (selon X)"> × l <input type="text" id="rectH" placeholder="libre" inputmode="decimal" autocomplete="off" aria-label="Largeur du rectangle en mètres (selon Y)"> m</label>
+          <label class="tb lbl" id="circWrap" hidden>Rayon <input type="text" id="circR" placeholder="au clic" inputmode="decimal" autocomplete="off" aria-label="Rayon du cercle en mètres"> m</label>
+          <label class="tb lbl" id="offWrap" hidden>Décalage <input type="text" id="offDist" value="0,50" inputmode="decimal" autocomplete="off" aria-label="Décalage en mètres"> m</label>
+          <label class="tb lbl">Calque <select id="lineLayer" aria-label="Calque des lignes tracées"></select></label>
+          <button class="tb" id="lnUndoBtn" type="button" disabled>Annuler</button>
+        </span>
+        <button class="tb" id="eraseBtn" type="button" title="Sélectionner des traits ou des points pour les supprimer ou les changer de calque"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4l6.5 16 2.3-6.7L19.5 11z"/><path d="M13 13l6 6"/></svg>Sélection</button>
+        <span class="erasebar" id="eraseBar" hidden>
+          <button class="tb del" id="delBtn" type="button" disabled>Supprimer la sélection (0)</button>
+          <button class="tb mv" id="moveBtn" type="button" disabled>Changer de calque (0)</button>
+          <button class="tb" id="undoBtn" type="button" disabled>Annuler</button>
+          <button class="tb" id="restoreBtn" type="button" disabled>Tout restaurer</button>
+        </span>
+        <button class="tb" id="dupBtn" type="button" title="Montrer les traits superposés"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="13" height="13" rx="1"/><rect x="8" y="8" width="13" height="13" rx="1"/></svg>Doublons</button>
+        <button class="tb on" id="ptsBtn" type="button" title="Afficher ou masquer les points"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 5l4 4M9 5L5 9M15 15l4 4M19 15l-4 4M15 5l4 4M19 5l-4 4"/></svg>Voir les points</button>
+        <button class="tb" id="bgBtn" type="button" title="Basculer le fond du plan entre noir et blanc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></svg><span id="bgLabel">Fond blanc</span></button>
+        <button class="tb" id="histBtn" type="button" title="Historique des actions : revenir à n'importe quelle étape"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>Historique <span id="histCount"></span></button>
+        <button class="tb" id="ghostBtn" type="button" title="Voir en gris ce qui sera supprimé"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Voir le retiré</button>
+      </div>
+      <div class="scalebar" id="scalebar"></div>
+      <div class="readout" id="readout">X – Y –</div>
+      <div class="measure-box" id="measureBox" hidden></div>
+      <div class="dup-box" id="dupBox" hidden></div>
+      <div class="hist-box" id="histBox" hidden>
+        <div class="hh"><b>Historique</b><span class="sp"></span>
+          <button class="tb" id="histBack" type="button" title="Ctrl+Z">↶ Annuler</button>
+          <button class="tb" id="histFwd" type="button" title="Ctrl+Y">Rétablir ↷</button>
+          <button class="hx" id="histClose" type="button" aria-label="Fermer l'historique">×</button></div>
+        <ol id="histList"></ol>
+        <div class="hreset"><button class="tb rst" id="histReset" type="button">Tout réinitialiser</button><span id="histResetMsg">Revenir au plan tel qu'il était à l'ouverture</span></div>
+        <div class="hnote">Clique une étape pour remettre le plan exactement dans cet état. Les étapes grisées ont été annulées : tu peux encore y revenir tant que tu ne fais pas de nouvelle action.</div>
+      </div>
+      <div class="info-box" id="infoBox" hidden></div>
+      <div class="info-box" id="pointBox" hidden></div>
+      <div class="info-box" id="lineBox" hidden></div>
+      <div class="info-box" id="xfMsg" hidden></div>
+      <div class="erase-hint" id="eraseHint" hidden><b>Clic</b> sur un trait ou un point : le sélectionner<br><b>Glisser vers la droite</b> : ce qui est entièrement dans le cadre<br><b>Glisser vers la gauche</b> : tout ce que le cadre touche<br><b>Suppr</b> : supprimer · <b>Changer de calque</b> : bouton en haut<br><b>Ctrl+Z</b> : annuler<br><b>Clic droit ou molette enfoncée</b> : déplacer le plan</div>
+      <div class="drop" id="drop" hidden><div style="text-align:center">Lâche les DXF ici<small>Un ou plusieurs étages : chacun aura son onglet</small></div></div>
+      <div class="busy" id="busy" hidden>Lecture du plan…</div>
+    </div>
+  </div>
+</div>
