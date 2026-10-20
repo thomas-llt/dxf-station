@@ -59,7 +59,7 @@
   const AUTO_OFF = /(cot(e|ation)|dim|text|txt|anno|hach|hatch|cartouche|title|legend|mobilier|furn|symb|nomenc|grille|grid)/i;
 
   // ---------- Plusieurs plans : un onglet par fichier ----------
-  const PK = ['xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
+  const PK = ['fh', 'fhOk', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
     'userView', 'out', 'outBytes', 'reused', 'sample', 'delGroup', 'selGroup', 'dupData', 'originDist'];
   const plans = []; let cur = -1;
   function savePlan() { if (cur < 0 || !plans[cur]) return; const st = plans[cur].st; for (const k of PK) st[k] = S[k]; st.view = Object.assign({}, S.view); }
@@ -76,7 +76,7 @@
     plans[i].badge = cur === 0 || !S.ref ? (cur === 0 && plans.length > 1 ? 'ref' : '') : (S.ref.verdict ? S.ref.verdict.kind : '');
     if (quiet) return;
     setMode('nav'); closeColorPop(); $('infoBox').hidden = true;
-    renderLayers(); updateEraseBar(); updateAll(); renderTabs(); renderHist(); renderXf(); autoFolds();
+    renderLayers(); updateEraseBar(); updateAll(); renderTabs(); renderHist(); renderXf(); autoFolds(); updateSaveUI();
     if (!S.userView) fit(); else draw();
   }
   function autoRef() {
@@ -128,7 +128,7 @@
       '<button class="padd" type="button" id="addPlan">+ Ajouter un étage</button>';
     $('applyAll').hidden = $('dlAllBtn').hidden = plans.length < 2;
     $('dlAllLabel').textContent = 'Tout télécharger (' + plans.length + ' plans, .zip)';
-    $('addPlan').onclick = () => $('file').click();
+    $('addPlan').onclick = pickFiles;
   }
   $('plans').addEventListener('click', e => {
     if (e.target.closest('input.tabname')) return;
@@ -195,8 +195,8 @@
     if (on) { $('fileinfo').innerHTML = ''; $('plans').innerHTML = ''; }
     else resize();
   }
-  $('homeDrop').addEventListener('click', () => $('file').click());
-  $('homeDrop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
+  $('homeDrop').addEventListener('click', () => pickFiles());
+  $('homeDrop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickFiles(); } });
   async function loadFiles(files) {
     if (!files) { showHome(true); return; }
     files = [...files].filter(f => /\.dxf$/i.test(f.name));
@@ -209,7 +209,7 @@
       const f = files[k];
       $('busy').hidden = false; $('busy').textContent = 'Lecture ' + (files.length > 1 ? (k + 1) + '/' + files.length + ' : ' : 'du plan : ') + f.name + ' (' + fmtSize(f.size) + ')';
       await new Promise(r => setTimeout(r, 30));
-      try { const idx = await addPlan(await f.arrayBuffer(), f.name, false); if (first < 0) first = idx; }
+      try { const idx = await addPlan(await f.arrayBuffer(), f.name, false, HMAP.get(f)); if (first < 0) first = idx; }
       catch (e) { errors.push(f.name + ' : ' + (e.message || e)); }
     }
     $('busy').hidden = true;
@@ -219,12 +219,24 @@
     if (first >= 0) finishLoad(first);
     if (errors.length) $('dlMsg').textContent = $('homeMsg').textContent = 'Non lu : ' + errors.join(' · ');
   }
-  async function addPlan(buf, name, sample) {
+  // lien entre un fichier ouvert et son emplacement sur le disque (Chrome / Edge) pour pouvoir « Enregistrer » dessus
+  const HMAP = new WeakMap();
+  async function pickFiles() {
+    if (window.showOpenFilePicker && !(window.claude && window.claude.use)) {
+      try {
+        const hs = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Plans DXF', accept: { 'application/dxf': ['.dxf'] } }] });
+        const fs = await Promise.all(hs.map(async hd => { const f = await hd.getFile(); HMAP.set(f, hd); return f; }));
+        loadFiles(fs); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    $('file').click();
+  }
+  async function addPlan(buf, name, sample, fh) {
     const doc = DXF.parse(buf);
     savePlan(); plans.push({ st: {}, badge: '' }); cur = plans.length - 1;
     S.view = { s: 1, tx: 0, ty: 0 }; S.userView = false; S.info = null; S.xf = null;
     if (S.ref && S.ref.auto) S.ref = null;
-    S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null;
+    S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null; S.fh = fh || null; S.fhOk = false;
     rebuild(true); savePlan();
     return cur;
   }
@@ -233,7 +245,7 @@
     cur = -1; for (let k = 0; k < plans.length; k++) activate(k, true);
     cur = -1; activate(i, true); cur = i;
     showHome(false);
-    setMode('nav'); renderLayers(); updateEraseBar(); updateAll(); renderTabs(); renderXf(); fit(); autoFolds();
+    setMode('nav'); renderLayers(); updateEraseBar(); updateAll(); renderTabs(); renderXf(); fit(); autoFolds(); updateSaveUI();
   }
   // compatibilité : charger un seul plan
   const loadBuffer = (buf, name, sample) => sample ? loadFiles(null) : loadFiles([new File([buf], name)]);
@@ -964,6 +976,7 @@
     if (e.key === 'Escape' && S.mode === 'xf') { setMode('nav'); return; }
     if (e.key === 'Escape' && S.mode === 'line') { if (S.lineTool === 'chain' && S.chainN) endChain(''); else { S.l1 = null; S.chainStart = null; S.offBase = null; S.offPrev = null; lineMsg(); } draw(); }
     if (e.key === 'Escape') { closeColorPop(); S.m1 = S.m2 = null; $('measureBox').hidden = true; S.info = null; $('infoBox').hidden = true; if (S.erase) { S.sel.clear(); S.rect = null; selChanged(); } draw(); }
+    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (!S.ex || !$('home').hidden) return; if (e.shiftKey || inArtifact) $('dlBtn').click(); else saveSame(); }
     else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); histFwd(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); histBack(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1743,11 +1756,13 @@
   }
   $('csvBtn').onclick = exportCsv;
   // enregistrement : fenêtre « Enregistrer sous » (choix du dossier, clé USB…) quand le navigateur le permet, sinon Téléchargements
+  let lastSaveHandle = null;
   async function saveLocal(blob, name, desc, ext) {
+    lastSaveHandle = null;
     if (window.showSaveFilePicker && !(window.claude && window.claude.use)) {
       try {
         const hd = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: desc, accept: { 'application/octet-stream': ['.' + ext] } }] });
-        const w = await hd.createWritable(); await w.write(blob); await w.close(); return 'saved:' + hd.name;
+        const w = await hd.createWritable(); await w.write(blob); await w.close(); lastSaveHandle = hd; return 'saved:' + hd.name;
       } catch (e) { if (e && e.name === 'AbortError') return 'cancel'; }
     }
     const url = URL.createObjectURL(blob), a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -1787,7 +1802,7 @@
   const outName = () => baseName() + '.dxf';
   let downloads = null; const inArtifact = !!(window.claude && window.claude.use);
   if (inArtifact) {
-    $('dlLabel').textContent = 'Télécharger (.zip contenant le DXF)';
+    $('dlLabel').textContent = 'Télécharger (.zip contenant le DXF)'; $('saveBtn').hidden = true; $('dlBtn').classList.add('primary');
     window.claude.use('downloads').then(d => { downloads = d; }).catch(() => {});
   }
   $('dlBtn').onclick = async () => {
@@ -1805,8 +1820,37 @@
       return;
     }
     const r = await saveLocal(new Blob([bytes], { type: 'application/dxf' }), outName(), 'Plan DXF', 'dxf');
+    if (lastSaveHandle) { S.fh = lastSaveHandle; S.fhOk = true; savePlan(); }
     msg.textContent = inArtifact ? 'Si rien ne se télécharge, utilise la version de la page enregistrée sur ton PC.' : saveMsg(r, outName(), '.');
+    updateSaveUI();
   };
+  // « Enregistrer » : écrit dans le fichier ouvert (ou celui choisi au dernier « Enregistrer sous »)
+  let saveArm = 0;
+  function updateSaveUI() {
+    if (inArtifact) { $('saveTarget').textContent = ''; return; }
+    const b = $('saveBtn'); b.classList.remove('armed'); $('saveLabel').textContent = 'Enregistrer'; clearTimeout(saveArm);
+    $('saveTarget').textContent = S.fh ? 'Enregistrer → ' + S.fh.name + (S.fhOk ? '' : ' (fichier reçu)') : (window.showSaveFilePicker ? 'Enregistrer demandera où ranger le fichier.' : 'Enregistrer → dossier Téléchargements (' + outName() + ')');
+  }
+  async function saveSame() {
+    clearTimeout(tmr); computeOut(); if (!S.out) return;
+    const msg = $('dlMsg'), b = $('saveBtn');
+    if (!S.fh) { $('dlBtn').click(); return; }
+    if (!S.fhOk && !b.classList.contains('armed')) {
+      b.classList.add('armed'); $('saveLabel').textContent = 'Confirmer : remplacer';
+      msg.textContent = 'Attention : « ' + S.fh.name + ' » est le fichier reçu. Il sera remplacé par la version nettoyée (calques retirés, mètres…). Clique encore pour confirmer, ou utilise « Enregistrer sous… » pour garder l\'original.';
+      clearTimeout(saveArm); saveArm = setTimeout(updateSaveUI, 6000); return;
+    }
+    try {
+      if (S.fh.queryPermission && (await S.fh.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await S.fh.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+        msg.textContent = 'Écriture refusée par le navigateur : utilise « Enregistrer sous… ».'; updateSaveUI(); return;
+      }
+      const w = await S.fh.createWritable(); await w.write(new Blob([S.out.text], { type: 'application/dxf' })); await w.close();
+      S.fhOk = true; savePlan();
+      const t = new Date(); msg.textContent = 'Enregistré dans ' + S.fh.name + ' à ' + String(t.getHours()).padStart(2, '0') + 'h' + String(t.getMinutes()).padStart(2, '0') + '.';
+    } catch (e) { msg.textContent = 'Impossible d\'écrire dans ' + S.fh.name + ' (' + (e && e.message || e) + '). Utilise « Enregistrer sous… ».'; }
+    updateSaveUI();
+  }
+  $('saveBtn').onclick = saveSame;
 
   $('dlAllBtn').onclick = async () => {
     const msg = $('dlMsg'); msg.textContent = 'Préparation des ' + plans.length + ' plans…';
@@ -1829,17 +1873,23 @@
 
   // ---------- Ouverture depuis Windows (application installée : double-clic sur un .dxf) ----------
   if ('launchQueue' in window && window.launchQueue) {
-    window.launchQueue.setConsumer(async params => { if (!params.files || !params.files.length) return; const fs = await Promise.all(params.files.map(f => f.getFile())); loadFiles(fs); });
+    window.launchQueue.setConsumer(async params => { if (!params.files || !params.files.length) return; const fs = await Promise.all(params.files.map(async hd => { const f = await hd.getFile(); HMAP.set(f, hd); return f; })); loadFiles(fs); });
   }
 
   // ---------- Ouverture de fichier ----------
-  $('openBtn').onclick = () => $('file').click();
+  $('openBtn').onclick = pickFiles;
   $('file').addEventListener('change', () => { const fs = [...$('file').files]; $('file').value = ''; if (fs.length) loadFiles(fs); });
   let dragDepth = 0;
   window.addEventListener('dragenter', e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { dragDepth++; if ($('home').hidden) $('drop').hidden = false; else $('homeDrop').classList.add('over'); e.preventDefault(); } });
   window.addEventListener('dragover', e => e.preventDefault());
   window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) { $('drop').hidden = true; $('homeDrop').classList.remove('over'); } });
-  window.addEventListener('drop', async e => { e.preventDefault(); dragDepth = 0; $('drop').hidden = true; $('homeDrop').classList.remove('over'); const fs = [...e.dataTransfer.files]; if (fs.length) loadFiles(fs); });
+  window.addEventListener('drop', async e => { e.preventDefault(); dragDepth = 0; $('drop').hidden = true; $('homeDrop').classList.remove('over');
+    const items = [...(e.dataTransfer.items || [])].filter(it => it.kind === 'file');
+    const hp = items.map(it => it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : Promise.resolve(null)); // à demander avant tout « await »
+    const fs = [...e.dataTransfer.files]; if (!fs.length) return;
+    const hs = await Promise.all(hp);
+    for (const f of fs) { const hd = hs.find(x => x && x.kind === 'file' && x.name === f.name); if (hd) HMAP.set(f, hd); }
+    loadFiles(fs); });
 
   resize();
   loadFiles(null);
