@@ -13,6 +13,8 @@ Le site publié (`../index.html`) est **généré** à partir de ces fichiers : 
 
 Les fichiers à la racine du dépôt (`manifest.webmanifest`, `sw.js`, icônes PNG, `favicon.ico`) rendent le site installable et utilisable hors connexion. Ils changent rarement.
 
+Le dossier `windows/` contient le kit qui pose l'icône sur les fichiers .dxf ; `Icone-DXF-Windows.zip` (à la racine) en est la version à télécharger. Si on modifie un fichier de `windows/`, il faut refaire le zip.
+
 ## Construire
 
 ```bash

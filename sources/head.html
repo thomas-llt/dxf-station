@@ -65,7 +65,8 @@ header.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .steps li::before { content: counter(st); font-family: var(--f-display); font-weight: 700; font-size: 22px; color: var(--accent); line-height: 1; }
 .steps b { font-family: var(--f-display); font-weight: 600; font-size: 17px; text-transform: uppercase; letter-spacing: .03em; }
 .steps span { color: var(--muted); font-size: 13px; }
-.privacy { margin: 0; color: var(--muted); font-size: 12.5px; text-align: center; }
+.privacy { margin: 0; color: var(--muted); font-size: 12.5px; text-align: center; line-height: 1.6; }
+.privacy a { color: var(--accent); text-underline-offset: 2px; }
 @media (max-width: 900px) { .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } .steps li:last-child { grid-column: span 2; } .app.is-home { height: auto; } .dropzone { min-height: 260px; } }
 @media (prefers-reduced-motion: reduce) { .dropzone { transition: none; } }
 
@@ -298,7 +299,7 @@ details.fold:not([open]) { gap: 0; }
 
 <div class="app">
   <header class="top">
-    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.2</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.3</span></div>
     <div class="fileinfo" id="fileinfo"></div>
     <div class="spacer"></div>
     <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
@@ -322,7 +323,7 @@ details.fold:not([open]) { gap: 0; }
       <li><b>Contrôle l'origine</b><span>Compare les étages entre eux et chiffre tout décalage X / Y.</span></li>
       <li><b>Exporte</b><span>DXF R12 léger, sous les 3 Mo, et les points en CSV pour la station.</span></li>
     </ol>
-    <p class="privacy">Les plans sont lus sur ton ordinateur : rien n'est envoyé sur internet.</p>
+    <p class="privacy">Les plans sont lus sur ton ordinateur : rien n'est envoyé sur internet.<br>Sous Windows, pour voir l'icône de l'outil sur tes fichiers .dxf : <a href="https://thomas-llt.github.io/dxf-station/Icone-DXF-Windows.zip" target="_blank" rel="noopener">télécharger le kit icône</a> (mode d'emploi dans le fichier LISEZMOI).</p>
   </section>
 
   <div class="findings" id="findings"></div>

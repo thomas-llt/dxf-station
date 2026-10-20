@@ -1,0 +1,25 @@
+﻿ICÔNE DXF STATION POUR LES FICHIERS .DXF
+========================================
+
+À faire une seule fois, sur chaque PC, APRÈS avoir choisi DXF Station comme
+programme par défaut pour les fichiers .dxf
+(clic droit sur un .dxf > Ouvrir avec > Choisir une autre application > DXF Station > Toujours).
+
+INSTALLER
+1. Dézipper ce dossier (clic droit > Extraire tout). Ne pas lancer depuis le zip.
+2. Double-cliquer sur « installer-icone-dxf.bat ».
+   Si Windows affiche un avertissement, cliquer « Informations complémentaires »
+   puis « Exécuter quand même ».
+3. Un message vert confirme l'installation. Si l'ancienne icône reste visible,
+   fermer et rouvrir l'explorateur, ou redémarrer le PC.
+
+Aucun droit administrateur n'est nécessaire : seul le compte Windows actuel est modifié.
+Le dossier dézippé peut être supprimé ensuite (l'icône est copiée dans
+%LOCALAPPDATA%\DXF-Station).
+
+RETIRER
+Double-cliquer sur « retirer-icone-dxf.bat » : l'icône d'origine est remise.
+
+SI L'ICÔNE DISPARAÎT UN JOUR
+Une mise à jour du navigateur peut réenregistrer l'application et remettre l'ancienne icône.
+Il suffit alors de relancer « installer-icone-dxf.bat ».
