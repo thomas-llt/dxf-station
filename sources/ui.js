@@ -59,10 +59,14 @@
   const AUTO_OFF = /(cot(e|ation)|dim|text|txt|anno|hach|hatch|cartouche|title|legend|mobilier|furn|symb|nomenc|grille|grid)/i;
 
   // ---------- Plusieurs plans : un onglet par fichier ----------
-  const PK = ['fh', 'fhOk', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
+  const PK = ['fh', 'fhOk', 'savedAt', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
     'userView', 'out', 'outBytes', 'reused', 'sample', 'delGroup', 'selGroup', 'dupData', 'originDist'];
   const plans = []; let cur = -1;
   function savePlan() { if (cur < 0 || !plans[cur]) return; const st = plans[cur].st; for (const k of PK) st[k] = S[k]; st.view = Object.assign({}, S.view); }
+  // modifications non enregistrées : l'étape d'historique courante n'est pas celle du dernier enregistrement
+  const isDirty = st => !!(st && st.hist && st.hist.length && st.savedAt !== st.hist[st.histPos]);
+  const anyDirty = () => plans.some((p, i) => !p.st.sample && isDirty(stOf(i)));
+  function markSaved() { if (S.hist) S.savedAt = S.hist[S.histPos]; savePlan(); renderTabs(); updateSaveUI(); }
   function syncUnitUI() {
     const opt = [...$('unit').options].find(o => +o.value === S.factor);
     $('unit').value = opt ? opt.value : 'custom'; $('factor').hidden = !!opt; $('factor').value = S.factor;
@@ -121,7 +125,7 @@
     const real = plans.filter(p => !p.st.sample);
     if (!real.length) { $('plans').innerHTML = ''; $('applyAll').hidden = $('dlAllBtn').hidden = true; return; }
     const lbl = { ref: 'Référence', ok: 'Origine OK', bad: 'Origine décalée', warn: 'À vérifier' };
-    $('plans').innerHTML = plans.map((p, i) => '<div class="ptab' + (i === cur ? ' cur' : '') + '" data-tab="' + i + '" role="button" tabindex="0" title="' + esc(tabTitle(i)) + '"><span class="pn">' + esc(tabLabel(i)) + '</span>' +
+    $('plans').innerHTML = plans.map((p, i) => '<div class="ptab' + (i === cur ? ' cur' : '') + '" data-tab="' + i + '" role="button" tabindex="0" title="' + esc(tabTitle(i)) + '"><span class="pn">' + esc(tabLabel(i)) + '</span>' + (isDirty(stOf(i)) ? '<span class="unsaved" title="Modifications non enregistrées"></span>' : '') +
       (p.badge && plans.length > 1 ? '<span class="bd ' + p.badge + '">' + (p.badge === 'ok' ? '✓ ' : p.badge === 'bad' ? '⚠ ' : '') + lbl[p.badge] + '</span>' : '') +
       '<button class="rn" type="button" data-rename="' + i + '" aria-label="Renommer ' + esc(p.st.name) + '" title="Renommer (nom du fichier exporté)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>' +
       '<button class="x" type="button" data-close="' + i + '" aria-label="Fermer ' + esc(p.st.name) + '" title="Fermer ce plan">×</button></div>').join('') +
@@ -139,7 +143,8 @@
   $('plans').addEventListener('dblclick', e => { const t = e.target.closest('[data-tab]'); if (!t || e.target.closest('button, input')) return; renameTab(+t.dataset.tab); });
   $('plans').addEventListener('keydown', e => { if (e.target.closest('input')) return; if (e.key === 'F2') { e.preventDefault(); const t = e.target.closest('[data-tab]'); if (t) renameTab(+t.dataset.tab); return; } const t = e.target.closest('[data-tab]'); if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); activate(+t.dataset.tab); } });
   function closePlan(i) {
-    savePlan(); plans.splice(i, 1);
+    savePlan();
+    if (isDirty(plans[i].st) && !confirm('« ' + tabLabel(i) + ' » a des modifications non enregistrées.\n\nFermer quand même et les perdre ?')) return; plans.splice(i, 1);
     if (!plans.length) { cur = -1; S.ref = null; loadFiles(null); return; }
     const next = Math.min(i, plans.length - 1); cur = -1;
     if (S.ref && S.ref.auto) S.ref = null;
@@ -237,7 +242,7 @@
     S.view = { s: 1, tx: 0, ty: 0 }; S.userView = false; S.info = null; S.xf = null;
     if (S.ref && S.ref.auto) S.ref = null;
     S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null; S.fh = fh || null; S.fhOk = false;
-    rebuild(true); savePlan();
+    rebuild(true); S.savedAt = S.hist ? S.hist[S.histPos] : null; savePlan();
     return cur;
   }
   function finishLoad(i) {
@@ -305,7 +310,7 @@
     S.hist = S.hist.slice(0, S.histPos + 1);
     S.hist.push({ label, t: new Date(), snap: snapState() });
     if (S.hist.length > 300) S.hist.splice(1, S.hist.length - 300);
-    S.histPos = S.hist.length - 1; renderHist(); updateEraseBar();
+    S.histPos = S.hist.length - 1; renderHist(); updateEraseBar(); dirtyUI();
   }
   function restoreState(sn) {
     S.del = new Set(sn.del); S.moves = new Map(sn.moves); S.created = sn.created.slice(); S.newLayers = sn.newLayers.map(o => Object.assign({}, o));
@@ -324,7 +329,7 @@
   }
   function histGo(i) {
     if (!S.hist || i < 0 || i >= S.hist.length || i === S.histPos) return;
-    const from = S.histPos; S.histPos = i; restoreState(S.hist[i].snap); renderHist();
+    const from = S.histPos; S.histPos = i; restoreState(S.hist[i].snap); renderHist(); dirtyUI();
     $('dlMsg').textContent = (i < from ? 'Retour à : ' : 'Rétabli : ') + S.hist[i].label + '.';
   }
   const histBack = () => histGo(S.histPos - 1), histFwd = () => histGo(S.histPos + 1);
@@ -972,11 +977,15 @@
   $('ptUndoBtn').onclick = histBack;
   $('ghostBtn').onclick = () => { S.ghost = !S.ghost; $('ghostBtn').classList.toggle('on', S.ghost); draw(); };
   window.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { // même dans un champ : sinon le navigateur enregistre la page web
+      e.preventDefault(); if (!S.ex || !$('home').hidden || $('saveDlg').open) return;
+      if (document.activeElement && document.activeElement.matches('input, select, textarea')) document.activeElement.blur();
+      if (e.shiftKey || inArtifact) $('dlBtn').click(); else saveSame(); return;
+    }
     if (e.target.matches && e.target.matches('input[type=text], input[type=number], input[type=search], input:not([type]), select, textarea')) return;
     if (e.key === 'Escape' && S.mode === 'xf') { setMode('nav'); return; }
     if (e.key === 'Escape' && S.mode === 'line') { if (S.lineTool === 'chain' && S.chainN) endChain(''); else { S.l1 = null; S.chainStart = null; S.offBase = null; S.offPrev = null; lineMsg(); } draw(); }
     if (e.key === 'Escape') { closeColorPop(); S.m1 = S.m2 = null; $('measureBox').hidden = true; S.info = null; $('infoBox').hidden = true; if (S.erase) { S.sel.clear(); S.rect = null; selChanged(); } draw(); }
-    else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (!S.ex || !$('home').hidden) return; if (e.shiftKey || inArtifact) $('dlBtn').click(); else saveSame(); }
     else if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); histFwd(); }
     else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); histBack(); }
     else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -1822,34 +1831,71 @@
     const r = await saveLocal(new Blob([bytes], { type: 'application/dxf' }), outName(), 'Plan DXF', 'dxf');
     if (lastSaveHandle) { S.fh = lastSaveHandle; S.fhOk = true; savePlan(); }
     msg.textContent = inArtifact ? 'Si rien ne se télécharge, utilise la version de la page enregistrée sur ton PC.' : saveMsg(r, outName(), '.');
+    if (r !== 'cancel') { markSaved(); toast('✓ ' + msg.textContent); }
     updateSaveUI();
   };
   // « Enregistrer » : écrit dans le fichier ouvert (ou celui choisi au dernier « Enregistrer sous »)
-  let saveArm = 0;
+  let toastT = 0;
+  function toast(text, bad) {
+    $('toastMsg').textContent = text; $('toast').classList.toggle('bad', !!bad); $('toast').hidden = false;
+    clearTimeout(toastT); if (!bad) toastT = setTimeout(() => { $('toast').hidden = true; }, 5000);
+  }
+  $('toastX').onclick = () => { $('toast').hidden = true; };
+  // plan renommé dans son onglet : « Enregistrer » crée le fichier au nouveau nom au lieu d'écraser l'ancien
+  const sameName = () => !S.fh || !S.outBase || S.fh.name.replace(/\.dxf$/i, '').toLowerCase() === baseName().toLowerCase();
+  function dirtyUI() {
+    if (inArtifact || cur < 0) return;
+    const d = isDirty(S);
+    $('saveBtn').classList.toggle('dirty', d);
+    $('saveBtn').title = (d ? 'Modifications non enregistrées. ' : '') + 'Enregistrer (Ctrl+S)';
+    const t = $('plans').querySelector('.ptab.cur');
+    if (t && !!t.querySelector('.unsaved') !== d) renderTabs();
+    let txt = S.fh && sameName() ? 'Enregistrer → ' + S.fh.name + (S.fhOk ? '' : ' (fichier reçu)')
+      : S.fh ? 'Enregistrer demandera où ranger « ' + outName() + ' » (plan renommé).'
+      : window.showSaveFilePicker ? 'Enregistrer demandera où ranger le fichier.' : 'Enregistrer → dossier Téléchargements (' + outName() + ')';
+    if (d) txt = 'Modifications non enregistrées · ' + txt;
+    $('saveTarget').textContent = txt; $('saveTarget').classList.toggle('dirty', d);
+  }
   function updateSaveUI() {
     if (inArtifact) { $('saveTarget').textContent = ''; return; }
-    const b = $('saveBtn'); b.classList.remove('armed'); $('saveLabel').textContent = 'Enregistrer'; clearTimeout(saveArm);
-    $('saveTarget').textContent = S.fh ? 'Enregistrer → ' + S.fh.name + (S.fhOk ? '' : ' (fichier reçu)') : (window.showSaveFilePicker ? 'Enregistrer demandera où ranger le fichier.' : 'Enregistrer → dossier Téléchargements (' + outName() + ')');
+    dirtyUI();
+  }
+  async function writeHandle() {
+    const msg = $('dlMsg'), fh = S.fh, planIdx = cur;
+    const bytes = new TextEncoder().encode(S.out.text), at = S.hist ? S.hist[S.histPos] : null;
+    try {
+      if (fh.queryPermission && (await fh.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await fh.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+        msg.textContent = 'NON enregistré : le navigateur a refusé l\'écriture. Utilise « Enregistrer sous… ».'; toast(msg.textContent, true); updateSaveUI(); return;
+      }
+      const w = await fh.createWritable(); await w.write(new Blob([bytes], { type: 'application/dxf' })); await w.close();
+      // relecture : le fichier sur le disque doit avoir exactement la taille de ce qu'on vient d'écrire
+      if (fh.getFile) { const f = await fh.getFile(); if (f.size !== bytes.length) throw new Error('le fichier relu fait ' + f.size + ' octets au lieu de ' + bytes.length); }
+      const target = cur === planIdx ? S : plans[planIdx] && plans[planIdx].st;
+      if (target) { target.fhOk = true; target.savedAt = at; }
+      if (cur === planIdx) savePlan();
+      renderTabs();
+      const t = new Date(); msg.textContent = 'Enregistré dans ' + fh.name + ' à ' + String(t.getHours()).padStart(2, '0') + 'h' + String(t.getMinutes()).padStart(2, '0') + ' (' + fmtSize(bytes.length) + ').';
+      toast('✓ ' + msg.textContent);
+    } catch (e) {
+      msg.textContent = 'NON enregistré : impossible d\'écrire dans ' + fh.name + ' (' + (e && e.message || e) + '). Le fichier est peut-être ouvert dans un autre logiciel, ou sur une clé retirée. Utilise « Enregistrer sous… ».';
+      toast(msg.textContent, true);
+    }
+    updateSaveUI();
   }
   async function saveSame() {
     clearTimeout(tmr); computeOut(); if (!S.out) return;
-    const msg = $('dlMsg'), b = $('saveBtn');
-    if (!S.fh) { $('dlBtn').click(); return; }
-    if (!S.fhOk && !b.classList.contains('armed')) {
-      b.classList.add('armed'); $('saveLabel').textContent = 'Remplacer ?';
-      msg.innerHTML = '<b style="color:var(--bad)">Remplacer le fichier reçu ?</b> « ' + esc(S.fh.name) + ' » sera écrasé par la version nettoyée. Reclique sur <b>Remplacer ?</b> pour confirmer, ou utilise <b>Enregistrer sous…</b> pour garder l\'original.';
-      clearTimeout(saveArm); saveArm = setTimeout(updateSaveUI, 6000); return;
+    if (!S.fh || !sameName()) { $('dlBtn').click(); return; }
+    if (!S.fhOk) {
+      $('saveDlgTxt').textContent = '« ' + S.fh.name + ' » sera remplacé par la version nettoyée. Pour garder l\'original du bureau d\'études, choisis « Enregistrer sous… ».';
+      $('saveDlg').showModal(); $('saveDlgOk').focus(); return;
     }
-    try {
-      if (S.fh.queryPermission && (await S.fh.queryPermission({ mode: 'readwrite' })) !== 'granted' && (await S.fh.requestPermission({ mode: 'readwrite' })) !== 'granted') {
-        msg.textContent = 'Écriture refusée par le navigateur : utilise « Enregistrer sous… ».'; updateSaveUI(); return;
-      }
-      const w = await S.fh.createWritable(); await w.write(new Blob([S.out.text], { type: 'application/dxf' })); await w.close();
-      S.fhOk = true; savePlan();
-      const t = new Date(); msg.textContent = 'Enregistré dans ' + S.fh.name + ' à ' + String(t.getHours()).padStart(2, '0') + 'h' + String(t.getMinutes()).padStart(2, '0') + '.';
-    } catch (e) { msg.textContent = 'Impossible d\'écrire dans ' + S.fh.name + ' (' + (e && e.message || e) + '). Utilise « Enregistrer sous… ».'; }
-    updateSaveUI();
+    await writeHandle();
   }
+  $('saveDlgCancel').onclick = () => $('saveDlg').close();
+  $('saveDlgOk').onclick = () => { $('saveDlg').close(); writeHandle(); };
+  $('saveDlgAs').onclick = () => { $('saveDlg').close(); $('dlBtn').click(); };
+  // fermeture de la page avec des modifications non enregistrées : le navigateur demande confirmation
+  window.addEventListener('beforeunload', e => { savePlan(); if (anyDirty()) { e.preventDefault(); e.returnValue = ''; } });
   $('saveBtn').onclick = saveSame;
 
   $('dlAllBtn').onclick = async () => {
@@ -1869,6 +1915,7 @@
       return;
     }
     const r = await saveLocal(zip, zname, 'Archive zip', 'zip'); msg.textContent = saveMsg(r, zname, ' (' + entries.length + ' plans).');
+    if (r !== 'cancel') { savePlan(); for (const p of plans) if (p.st.hist) p.st.savedAt = p.st.hist[p.st.histPos]; S.savedAt = plans[cur].st.savedAt; renderTabs(); updateSaveUI(); toast('✓ ' + msg.textContent); }
   };
 
   // ---------- Ouverture depuis Windows (application installée : double-clic sur un .dxf) ----------

@@ -214,7 +214,19 @@ details.fold:not([open]) { gap: 0; }
 .export .btn.primary { justify-content: center; padding: 10px; font-size: 15px; }
 .saverow { display: flex; flex-wrap: wrap; gap: 8px; }
 .saverow .btn { flex: 1 1 auto; min-width: max-content; justify-content: center; padding: 10px 12px; }
-.saverow .btn.armed { background: var(--bad); border-color: var(--bad); color: #fff; }
+.saverow .btn .dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.saverow .btn.dirty .dot { display: inline-block; }
+#saveTarget.dirty { color: var(--warn); font-weight: 600; }
+.ptab .unsaved { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); flex: none; }
+.toast { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 30; display: flex; gap: 10px; align-items: center; max-width: min(560px, calc(100% - 32px));
+  background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-left: 5px solid var(--ok); border-radius: 6px; padding: 10px 14px; box-shadow: 0 6px 24px rgb(0 0 0 / .25); font-size: 14px; }
+.toast.bad { border-left-color: var(--bad); }
+.toast button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 2px; }
+dialog.dlg { border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 8px; padding: 20px; max-width: 440px; width: calc(100% - 32px); }
+dialog.dlg::backdrop { background: rgb(0 0 0 / .45); }
+dialog.dlg h3 { margin: 0 0 8px; font-size: 17px; }
+dialog.dlg p { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
+dialog.dlg .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 #saveTarget { font-family: var(--f-mono); font-size: 11.5px; overflow-wrap: anywhere; }
 #dlMsg { font-size: 12.5px; min-height: 1em; }
 
@@ -303,7 +315,7 @@ details.fold:not([open]) { gap: 0; }
 
 <div class="app">
   <header class="top">
-    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.5</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.20.6</span></div>
     <div class="fileinfo" id="fileinfo"></div>
     <div class="spacer"></div>
     <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
@@ -409,7 +421,7 @@ details.fold:not([open]) { gap: 0; }
         <div class="gauge" id="gauge"><i></i></div>
         <div class="exp-meta" id="outMeta"></div>
         <div class="saverow">
-          <button class="btn primary" id="saveBtn" type="button" title="Enregistrer (Ctrl+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg><span id="saveLabel">Enregistrer</span></button>
+          <button class="btn primary" id="saveBtn" type="button" title="Enregistrer (Ctrl+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg><span id="saveLabel">Enregistrer</span><span class="dot" title="Modifications non enregistrées"></span></button>
           <button class="btn" id="dlBtn" type="button" title="Enregistrer sous (Ctrl+Maj+S)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg><span id="dlLabel">Enregistrer sous…</span></button>
         </div>
         <div class="hint" id="saveTarget"></div>
@@ -467,9 +479,19 @@ details.fold:not([open]) { gap: 0; }
       <div class="info-box" id="pointBox" hidden></div>
       <div class="info-box" id="lineBox" hidden></div>
       <div class="info-box" id="xfMsg" hidden></div>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden><span id="toastMsg"></span><button type="button" id="toastX" aria-label="Fermer">×</button></div>
       <div class="erase-hint" id="eraseHint" hidden><b>Clic</b> sur un trait ou un point : le sélectionner<br><b>Glisser vers la droite</b> : ce qui est entièrement dans le cadre<br><b>Glisser vers la gauche</b> : tout ce que le cadre touche<br><b>Suppr</b> : supprimer · <b>Changer de calque</b> : bouton en haut<br><b>Ctrl+Z</b> : annuler<br><b>Clic droit ou molette enfoncée</b> : déplacer le plan</div>
       <div class="drop" id="drop" hidden><div style="text-align:center">Lâche les DXF ici<small>Un ou plusieurs étages : chacun aura son onglet</small></div></div>
       <div class="busy" id="busy" hidden>Lecture du plan…</div>
     </div>
   </div>
 </div>
+<dialog class="dlg" id="saveDlg">
+  <h3>Remplacer le fichier reçu ?</h3>
+  <p id="saveDlgTxt"></p>
+  <div class="row">
+    <button class="btn" type="button" id="saveDlgCancel">Annuler</button>
+    <button class="btn" type="button" id="saveDlgAs">Enregistrer sous…</button>
+    <button class="btn primary" type="button" id="saveDlgOk">Remplacer</button>
+  </div>
+</dialog>
