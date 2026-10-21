@@ -624,9 +624,24 @@
     W = r.width; H = r.height; cv.width = Math.max(1, Math.round(W * dpr)); cv.height = Math.max(1, Math.round(H * dpr));
     if (!S.userView) fit(); else draw();
   }
+  // emprise de ce qui est gardé (calques cochés, traits non effacés) : sert au recadrage
+  function keptExtents() {
+    const on = new Map(S.layers.map(l => [l.name, l.on])), xs = [], ys = [];
+    for (const p of S.ex.prims) {
+      if (!on.get(p.layer) || S.del.has(p.sig)) continue;
+      if (p.k === 'L') { xs.push(p.x1, p.x2); ys.push(p.y1, p.y2); }
+      else if (p.k === 'P') for (const q of p.pts) { xs.push(q[0]); ys.push(q[1]); }
+      else if (p.r) { xs.push(p.x - p.r, p.x + p.r); ys.push(p.y - p.r, p.y + p.r); }
+      else { xs.push(p.x); ys.push(p.y); }
+    }
+    if (!xs.length) return null;
+    const fx = Float64Array.from(xs).sort(), fy = Float64Array.from(ys).sort();
+    const q = (a, t) => a[Math.min(a.length - 1, Math.max(0, Math.round(t * (a.length - 1))))];
+    return [q(fx, .005), q(fy, .005), q(fx, .995), q(fy, .995)];
+  }
   function fit() {
     if (!S.ext) return;
-    const e = S.rext, [ox, oy] = S.origin;
+    const e = (S.ex && keptExtents()) || S.rext, [ox, oy] = S.origin;
     const cs = [[e[0], e[1]], [e[2], e[1]], [e[2], e[3]], [e[0], e[3]]].map(p => toF([p[0] - ox, p[1] - oy]));
     const x0 = Math.min(...cs.map(p => p[0])), x1 = Math.max(...cs.map(p => p[0])), y0 = Math.min(...cs.map(p => p[1])), y1 = Math.max(...cs.map(p => p[1]));
     const w = Math.max(x1 - x0, 1e-9), h = Math.max(y1 - y0, 1e-9);
@@ -1108,7 +1123,8 @@
   function updateAll() { clearTimeout(tmr); tmr = setTimeout(() => { computeOut(); if (S.ref) buildRef(false); }, 60); updateScaleInfo(); renderOrigin(); draw(); }
   function updateScaleInfo() {
     if (!S.rext) return;
-    const f = S.factor, w = (S.rext[2] - S.rext[0]) * f, h = (S.rext[3] - S.rext[1]) * f;
+    const ke = (S.ex && keptExtents()) || S.rext;
+    const f = S.factor, w = (ke[2] - ke[0]) * f, h = (ke[3] - ke[1]) * f;
     $('dims').textContent = 'Emprise du plan : ' + fmt(w, 2) + ' × ' + fmt(h, 2) + ' m';
     const un = DXF.UNIT_NAMES[S.doc.insunits] || 'non défini';
     let hint = '', cls = 'hint';
