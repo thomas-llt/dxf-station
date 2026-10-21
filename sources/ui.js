@@ -94,10 +94,10 @@
   const short = n => n.replace(/\.dxf$/i, '');
   // nom de l'onglet = nom du fichier exporté
   const stOf = i => i === cur ? S : plans[i].st;
-  const defaultBase = st => st.name.replace(/\.dxf$/i, '') || 'plan';
+  const defaultBase = st => (st.name || '').replace(/\.dxf$/i, '') || 'plan';
   const cleanFile = v => v.replace(/\.dxf$/i, '').replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
   const baseName = () => S.outBase || defaultBase(S);
-  const tabLabel = i => stOf(i).outBase || short(plans[i].st.name);
+  const tabLabel = i => stOf(i).outBase || short(stOf(i).name || '');
   const tabTitle = i => { const st = stOf(i); return (st.outBase ? 'Fichier reçu : ' + st.name + '\n' : '') + 'Exporté sous : ' + (st.outBase || defaultBase(st)) + '.dxf\nDouble-clic pour renommer'; };
   function renameTab(i) {
     if (i !== cur) activate(i);
@@ -121,18 +121,20 @@
     inp.addEventListener('click', e => e.stopPropagation());
     inp.addEventListener('dblclick', e => e.stopPropagation());
   }
+  const addBtn = document.createElement('button'); addBtn.className = 'padd'; addBtn.type = 'button'; addBtn.id = 'addPlan'; addBtn.textContent = '+ Ajouter un étage';
+  addBtn.onclick = () => pickFiles();
   function renderTabs() {
     const real = plans.filter(p => !p.st.sample);
     if (!real.length) { $('plans').innerHTML = ''; $('applyAll').hidden = $('dlAllBtn').hidden = true; return; }
     const lbl = { ref: 'Référence', ok: 'Origine OK', bad: 'Origine décalée', warn: 'À vérifier' };
-    $('plans').innerHTML = plans.map((p, i) => '<div class="ptab' + (i === cur ? ' cur' : '') + '" data-tab="' + i + '" role="button" tabindex="0" title="' + esc(tabTitle(i)) + '"><span class="pn">' + esc(tabLabel(i)) + '</span>' + (isDirty(stOf(i)) ? '<span class="unsaved" title="Modifications non enregistrées"></span>' : '') +
+    if (addBtn.parentNode !== $('plans')) { $('plans').innerHTML = '<div id="tabList" style="display:contents"></div>'; $('plans').appendChild(addBtn); }
+    $('tabList').innerHTML = plans.map((p, i) => '<div class="ptab' + (i === cur ? ' cur' : '') + '" data-tab="' + i + '" role="button" tabindex="0" title="' + esc(tabTitle(i)) + '"><span class="pn">' + esc(tabLabel(i)) + '</span>' + (isDirty(stOf(i)) ? '<span class="unsaved" title="Modifications non enregistrées"></span>' : '') +
       (p.badge && plans.length > 1 ? '<span class="bd ' + p.badge + '">' + (p.badge === 'ok' ? '✓ ' : p.badge === 'bad' ? '⚠ ' : '') + lbl[p.badge] + '</span>' : '') +
-      '<button class="rn" type="button" data-rename="' + i + '" aria-label="Renommer ' + esc(p.st.name) + '" title="Renommer (nom du fichier exporté)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>' +
-      '<button class="x" type="button" data-close="' + i + '" aria-label="Fermer ' + esc(p.st.name) + '" title="Fermer ce plan">×</button></div>').join('') +
-      '<button class="padd" type="button" id="addPlan">+ Ajouter un étage</button>';
+      '<button class="rn" type="button" data-rename="' + i + '" aria-label="Renommer ' + esc(tabLabel(i)) + '" title="Renommer (nom du fichier exporté)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>' +
+      '<button class="x" type="button" data-close="' + i + '" aria-label="Fermer ' + esc(tabLabel(i)) + '" title="Fermer ce plan">×</button></div>').join('');
+    // le bouton « Ajouter » reste en place (hors de la liste redessinée) : sinon un clic pendant un redessin serait perdu
     $('applyAll').hidden = $('dlAllBtn').hidden = plans.length < 2;
     $('dlAllLabel').textContent = 'Tout télécharger (' + plans.length + ' plans, .zip)';
-    $('addPlan').onclick = pickFiles;
   }
   $('plans').addEventListener('click', e => {
     if (e.target.closest('input.tabname')) return;
@@ -238,7 +240,11 @@
   }
   async function addPlan(buf, name, sample, fh) {
     const doc = DXF.parse(buf);
-    savePlan(); plans.push({ st: {}, badge: '' }); cur = plans.length - 1;
+    savePlan(); const prev = cur; plans.push({ st: {}, badge: '' }); cur = plans.length - 1;
+    try { return addPlanIn(buf, name, sample, fh, doc); }
+    catch (e) { plans.pop(); cur = -1; if (prev >= 0) { activate(prev, true); cur = prev; } throw e; } // plan illisible : on le retire
+  }
+  function addPlanIn(buf, name, sample, fh, doc) {
     S.view = { s: 1, tx: 0, ty: 0 }; S.userView = false; S.info = null; S.xf = null;
     if (S.ref && S.ref.auto) S.ref = null;
     S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null; S.fh = fh || null; S.fhOk = false;
