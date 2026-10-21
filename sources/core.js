@@ -42,7 +42,7 @@ const DXF = (() => {
           while (pair && pair[0] === 0 && pair[1] === 'VERTEX') e.verts.push(readEnt());
           if (pair && pair[0] === 0 && pair[1] === 'SEQEND') readEnt();
         } else if (e.type === 'INSERT') {
-          while (pair && pair[0] === 0 && (pair[1] === 'ATTRIB')) readEnt();
+          while (pair && pair[0] === 0 && (pair[1] === 'ATTRIB')) { const a = readEnt(); (e.attribs || (e.attribs = [])).push({ tag: getP(a.p, 2, ''), val: getP(a.p, 1, '') }); }
           if (pair && pair[0] === 0 && pair[1] === 'SEQEND') readEnt();
         }
         out.push(e);
@@ -114,6 +114,17 @@ const DXF = (() => {
     HATCH: 'hachure', SOLID: 'hachure', TRACE: 'hachure', WIPEOUT: 'hachure', MPOLYGON: 'hachure',
   };
 
+  // attributs de bloc qui donnent le nom et l'altitude d'un point
+  const NAME_TAG = /^(NOM|NAME|MATRICULE|MAT|NUM|NUMERO|NUMÉRO|NO|N°|ID|PT|POINT|PNT|REPERE|REPÈRE|REF|CIBLE|STATION)$/i, Z_TAG = /^(Z|ALT|ALTI|ALTITUDE|H|NGF|COTE|NIV|NIVEAU|ELEV|ELEVATION|HAUTEUR)$/i;
+  function ptAttribs(list) {
+    let name = '', z = null;
+    for (const { tag, val } of list) {
+      const v = (val || '').trim(); if (!v) continue;
+      if (z === null && Z_TAG.test(tag.trim())) { const n = parseFloat(v.replace(',', '.').replace(/[^0-9.+-]/g, '')); if (isFinite(n)) z = n; }
+      else if (!name && NAME_TAG.test(tag.trim())) name = v.slice(0, 40);
+    }
+    return { name, z };
+  }
   // Éclate tout le dessin en primitives simples, en coordonnées du fichier (unités source)
   // prim : {k:'L'|'A'|'C'|'P'|'T', layer, ...}
   function explode(doc, opt) {
@@ -188,7 +199,7 @@ const DXF = (() => {
       return out;
     }
 
-    function walk(ents, m, parentLayer, depth, parentColor) {
+    function walk(ents, m, parentLayer, depth, parentColor, zo) {
       for (const e of ents) {
         if (depth === 0 && getP(e.p, 67, '0') === '1') continue; // espace papier
         let layer = getP(e.p, 8, '0');
@@ -196,6 +207,7 @@ const DXF = (() => {
         let ec = parseInt(getP(e.p, 62, '256'), 10); if (ec === 0) ec = parentColor; else if (!(ec >= 1 && ec <= 255)) ec = null;
         const n0 = prims.length;
         const t = e.type, cat = CAT[t] || (t === 'INSERT' ? 'insert' : 'autre');
+        if (t === 'ATTDEF' && opt.keepPoints && parentLayer !== null) continue; // définition d'attribut d'un bloc : sert au nom des points, rien à retirer
         if (cat !== 'geo' && cat !== 'insert' && !(cat === 'point' && opt.keepPoints)) {
           stats[cat] = (stats[cat] || 0) + 1;
           perLayerDropped.set(layer, (perLayerDropped.get(layer) || 0) + 1);
@@ -207,7 +219,7 @@ const DXF = (() => {
             const a = ap(m, num(p, 10), num(p, 20)), b = ap(m, num(p, 11), num(p, 21));
             prims.push({ k: 'L', layer, x1: a[0], y1: a[1], x2: b[0], y2: b[1] }); stats.geo++; break;
           }
-          case 'POINT': { const a = ap(m, num(p, 10), num(p, 20)); prims.push({ k: 'T', layer, x: a[0], y: a[1] }); stats.point++; break; }
+          case 'POINT': { const a = ap(m, num(p, 10), num(p, 20)), z = num(p, 30) + (zo || 0); const q = { k: 'T', layer, x: a[0], y: a[1] }; if (z) q.z = z; prims.push(q); stats.point++; break; }
           case 'CIRCLE': case 'ARC': {
             const mm = mul(m, ocs(p));
             emitArc(layer, mm, num(p, 10), num(p, 20), num(p, 40), num(p, 50), num(p, 51), t === 'CIRCLE'); stats.geo++; break;
@@ -245,7 +257,16 @@ const DXF = (() => {
               const ix = num(p, 10) + c * ox - s * oy, iy = num(p, 20) + s * ox + c * oy;
               let loc = [c * sx, s * sx, -s * sy, c * sy, ix, iy];
               loc = mul(loc, [1, 0, 0, 1, -blk.bx, -blk.by]);
-              walk(blk.ents, mul(m, mul(ocs(p), loc)), layer, depth + 1, ec);
+              const nb = prims.length;
+              walk(blk.ents, mul(m, mul(ocs(p), loc)), layer, depth + 1, ec, (zo || 0) + num(p, 30));
+              if (e.attribs && opt.keepPoints) { // nom / altitude d'un point portés par les attributs du bloc (cible de géomètre, point exporté par l'outil)
+                const at = ptAttribs(e.attribs);
+                if (at.name || at.z !== null) {
+                  let pts = 0;
+                  for (let k = nb; k < prims.length; k++) if (prims[k].k === 'T') { pts++; if (at.name) prims[k].name = at.name; if (at.z !== null) prims[k].zm = at.z; }
+                  if (!pts && at.z !== null && r === 0 && q === 0) { const a = ap(m, num(p, 10), num(p, 20)); const pt = { k: 'T', layer, x: a[0], y: a[1], zm: at.z }; if (at.name) pt.name = at.name; prims.push(pt); stats.point++; }
+                }
+              }
             }
             break;
           }
@@ -253,7 +274,7 @@ const DXF = (() => {
         if (ec && t !== 'INSERT') for (let k = n0; k < prims.length; k++) prims[k].c = ec;
       }
     }
-    walk(doc.ents, opt.matrix || I, null, 0, null);
+    walk(doc.ents, opt.matrix || I, null, 0, null, 0);
     return { prims, stats, usedBlocks, perLayerDropped };
   }
 
@@ -301,7 +322,9 @@ const DXF = (() => {
       out.push('0\nARC\n8\n' + L + '\n10\n' + X + '\n20\n' + Y + '\n30\n0\n40\n' + R + '\n50\n' + fa(a0) + '\n51\n' + fa(a1) + '\n' + CS); count++;
       ext(x - r, y - r); ext(x + r, y + r);
     };
-    let CS = '';
+    let CS = '', usePt = false;
+    const fz = v => { let s = v.toFixed(Math.max(3, dec)); s = s.replace(/0+$/, '').replace(/\.$/, ''); return s === '-0' ? '0' : s; };
+    const txt = v => String(v).replace(/[\r\n]+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '_').slice(0, 40);
     for (const p of prims) {
       const L = lmap.get(p.layer); CS = p.c && !(o.override && o.override.has(p.layer)) ? '62\n' + p.c + '\n' : '';
       if (p.k === 'L') line(L, p.x1, p.y1, p.x2, p.y2);
@@ -312,7 +335,14 @@ const DXF = (() => {
         if (seen) { const k = 'C' + X + ',' + Y + ',' + R; if (seen.has(k)) { dups++; continue; } seen.add(k); }
         out.push('0\nCIRCLE\n8\n' + L + '\n10\n' + X + '\n20\n' + Y + '\n30\n0\n40\n' + R + '\n' + CS); count++; ext(p.x - p.r, p.y - p.r); ext(p.x + p.r, p.y + p.r);
       } else if (p.k === 'T') {
-        out.push('0\nPOINT\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n0\n' + CS); count++; ext(p.x, p.y);
+        const nm = o.ptName ? o.ptName(p) : (p.name || ''), z = o.ptZ ? o.ptZ(p) : (p.zm ?? (p.z ? p.z * sc : null)), Z = z === null || !isFinite(z) ? '0' : fz(z);
+        if (nm || z !== null) { // point nommé : bloc PT_STATION (un POINT) + attributs NOM et ALT, invisibles
+          usePt = true;
+          const att = (tag, v) => '0\nATTRIB\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n' + Z + '\n40\n0.2\n1\n' + v + '\n2\n' + tag + '\n70\n1\n';
+          out.push('0\nINSERT\n8\n' + L + '\n' + CS + '66\n1\n2\nPT_STATION\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n' + Z + '\n' +
+            att('NOM', txt(nm)) + att('ALT', z === null ? '' : Z) + '0\nSEQEND\n8\n' + L + '\n');
+        } else out.push('0\nPOINT\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n0\n' + CS);
+        count++; ext(p.x, p.y);
       } else if (p.k === 'P') {
         const pts = p.pts, n = pts.length, segs = p.closed ? n : n - 1;
         if (explodePoly) {
@@ -342,7 +372,9 @@ const DXF = (() => {
     h += '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB\n';
     h += '0\nTABLE\n2\nLAYER\n70\n' + (names.length + 1) + '\n0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n';
     for (const [orig, nm] of lmap) { if (nm === '0') continue; const c = (layersInfo.get(orig) || {}).color || 7; h += '0\nLAYER\n2\n' + nm + '\n70\n0\n62\n' + (o.layerColor ? (o.layerColor.get(orig) || c) : c) + '\n6\nCONTINUOUS\n'; }
-    h += '0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
+    const attdef = (tag, prompt) => '0\nATTDEF\n8\n0\n10\n0\n20\n0\n30\n0\n40\n0.2\n1\n\n3\n' + prompt + '\n2\n' + tag + '\n70\n1\n';
+    const blocks = usePt ? '0\nBLOCK\n8\n0\n2\nPT_STATION\n70\n2\n10\n0\n20\n0\n30\n0\n3\nPT_STATION\n0\nPOINT\n8\n0\n10\n0\n20\n0\n30\n0\n' + attdef('NOM', 'Nom du point') + attdef('ALT', 'Altitude') + '0\nENDBLK\n8\n0\n' : '';
+    h += '0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n' + blocks + '0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
     const text = h + out.join('') + '0\nENDSEC\n0\nEOF\n';
     return { text: text.replace(/\n/g, '\r\n'), count, dups, tiny, layers: names.length, lmap, ext: [minx * sc, miny * sc, maxx * sc, maxy * sc] };
   }

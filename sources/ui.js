@@ -59,7 +59,7 @@
   const AUTO_OFF = /(cot(e|ation)|dim|text|txt|anno|hach|hatch|cartouche|title|legend|mobilier|furn|symb|nomenc|grille|grid)/i;
 
   // ---------- Plusieurs plans : un onglet par fichier ----------
-  const PK = ['fh', 'fhOk', 'savedAt', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
+  const PK = ['fh', 'fhOk', 'savedAt', 'ptMeta', 'ptList', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
     'userView', 'out', 'outBytes', 'reused', 'sample', 'delGroup', 'selGroup', 'dupData', 'originDist'];
   const plans = []; let cur = -1;
   function savePlan() { if (cur < 0 || !plans[cur]) return; const st = plans[cur].st; for (const k of PK) st[k] = S[k]; st.view = Object.assign({}, S.view); }
@@ -279,7 +279,7 @@
   function rebuild(first) {
     const doc = S.doc;
     S.ex = DXF.explode(doc, { keepPoints: $('optPoints').checked });
-    if (first) { S.del = new Set(); S.hist = []; S.histPos = -1; S.created = []; S.info = null; S.moves = new Map(); S.newLayers = []; }
+    if (first) { S.ptMeta = new Map(); S.del = new Set(); S.hist = []; S.histPos = -1; S.created = []; S.info = null; S.moves = new Map(); S.newLayers = []; }
     S.ex.prims.push(...S.created);
     for (const p of S.ex.prims) {
       if (p._ol !== undefined) { p.layer = p._ol; p.c = p._oc; } else { p._ol = p.layer; p._oc = p.c; }
@@ -320,7 +320,7 @@
   // ---------- Historique des actions ----------
   function snapState() {
     return { del: [...S.del], moves: [...S.moves], created: S.created.slice(), newLayers: S.newLayers.map(o => Object.assign({}, o)),
-      layers: S.layers.map(l => [l.name, l.on, l.color, l.colorSet, l.rename]), factor: S.factor, unitReason: S.unitReason, outBase: S.outBase, xf: S.xf ? Object.assign({}, S.xf) : null };
+      ptMeta: [...(S.ptMeta || new Map())].map(([k, v]) => [k, Object.assign({}, v)]), layers: S.layers.map(l => [l.name, l.on, l.color, l.colorSet, l.rename]), factor: S.factor, unitReason: S.unitReason, outBase: S.outBase, xf: S.xf ? Object.assign({}, S.xf) : null };
   }
   function commit(label) {
     if (!S.hist) return;
@@ -330,7 +330,7 @@
     S.histPos = S.hist.length - 1; renderHist(); updateEraseBar(); dirtyUI();
   }
   function restoreState(sn) {
-    S.del = new Set(sn.del); S.moves = new Map(sn.moves); S.created = sn.created.slice(); S.newLayers = sn.newLayers.map(o => Object.assign({}, o));
+    S.del = new Set(sn.del); S.moves = new Map(sn.moves); S.created = sn.created.slice(); S.newLayers = sn.newLayers.map(o => Object.assign({}, o)); S.ptMeta = new Map((sn.ptMeta || []).map(([k, v]) => [k, Object.assign({}, v)]));
     S.ex.prims = S.ex.prims.filter(p => !p.created).concat(S.created);
     for (const p of S.ex.prims) { if (p._ol !== undefined) { p.layer = p._ol; p.c = p._oc; } const mv = S.moves.get(p.sig); if (mv) { p.layer = mv; p.c = undefined; } }
     const xfChanged = JSON.stringify(S.xf || null) !== JSON.stringify(sn.xf || null);
@@ -427,6 +427,7 @@
     return out;
   }
   function buildHit() {
+    S.ptList = S.ex.prims.filter(p => p.k === 'T');
     const w = Math.max(S.ext[2] - S.ext[0], S.ext[3] - S.ext[1], 1e-9), cell = w / 128, grid = new Map(), big = [];
     S.ex.prims.forEach((p, i) => {
       const q = polyOf(p); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -455,8 +456,8 @@
     let best = null, bd = tol * tol;
     for (const i of seen) {
       const p = S.ex.prims[i]; if (!alive(p, on)) continue;
-      let d = primDist2(p, wx, wy); if (p.k === 'T') d *= 0.5; // priorité aux points
-      if (d <= bd) { bd = d; best = p; }
+      let d = primDist2(p, wx, wy); if (p.k === 'T') d *= 0.05; // priorité nette aux points (cible au milieu d'une croix)
+      if (d < bd || (d === bd && !(best && best.k === 'T'))) { bd = d; best = p; }
     }
     return best;
   }
@@ -754,13 +755,15 @@
         ctx.fillStyle = 'rgba(16,21,19,.85)'; ctx.fillRect(lx - 4, ly - 9, tw + 8, 18); ctx.fillStyle = '#ff8f8f'; ctx.fillText(label, lx, ly);
       }
     }
-    // noms des points créés
-    if (S.showPts && S.created.length) {
+    // nom et altitude des points
+    if (S.showPts && S.ptList && S.ptList.length) {
       const on = layerOnMap(); ctx.font = '600 11px ' + getComputedStyle(document.body).getPropertyValue('--f-mono'); ctx.textBaseline = 'bottom';
-      for (const p of S.created) {
-        if (p.k !== 'T' || !alive(p, on)) continue; const [x, y] = toScreen(p.x - S.origin[0], p.y - S.origin[1]);
-        if (x < -40 || y < -20 || x > W + 40 || y > H + 20) continue;
-        ctx.lineWidth = 3; ctx.strokeStyle = K.halo; ctx.strokeText(p.name, x + 7, y - 5); ctx.fillStyle = K.label; ctx.fillText(p.name, x + 7, y - 5);
+      for (const p of S.ptList) {
+        const nm = ptName(p), z = ptZ(p); if (!nm && z === null) continue;
+        const [x, y] = toScreen(p.x - S.origin[0], p.y - S.origin[1]);
+        if (x < -60 || y < -20 || x > W + 60 || y > H + 20 || !alive(p, on)) continue;
+        const t = nm + (z !== null ? (nm ? ' · ' : 'Z ') + fmt(z, 3) : '');
+        ctx.lineWidth = 3; ctx.strokeStyle = K.halo; ctx.strokeText(t, x + 7, y - 5); ctx.fillStyle = K.label; ctx.fillText(t, x + 7, y - 5);
       }
     }
     // tracé : aperçus
@@ -876,7 +879,9 @@
       const [wx, wy] = toWorld(e.offsetX, e.offsetY); xfClick(wx, wy, tolPx / S.view.s); draw();
     }
     if (!moved && pointers.size === 0 && dragStart && e.button === 0 && S.mode === 'point') {
-      const [wx, wy] = toWorld(e.offsetX, e.offsetY); const sp = snapAt(wx, wy, tolPx / S.view.s);
+      const [wx, wy] = toWorld(e.offsetX, e.offsetY), hitPt = pick(wx, wy, tolPx / S.view.s);
+      if (hitPt && hitPt.k === 'T') { pointMsg('Point existant : donne-lui un nom et un Z.', hitPt); draw(); return; }
+      const sp = snapAt(wx, wy, tolPx / S.view.s);
       if (sp) createPoint(sp.x, sp.y, sp.kind); else pointMsg('Pas de croisement ici. Approche le viseur d\'un croisement de traits : il devient jaune quand il accroche.');
     }
     if (!moved && S.measure && pointers.size === 0) {
@@ -1173,7 +1178,7 @@
     }
     const lc = new Map(), ov = new Set();
     for (const l of S.layers) { const n = shown(l); if (!lc.has(n) || l.on) lc.set(n, l.color); if (l.colorSet) ov.add(n); }
-    S.out = DXF.write(outPrims, S.doc.layers, { scale: S.factor, decimals: +$('optDec').value, explodePoly: $('optExplode').checked, dedupe: $('optDedupe').checked, layerColor: lc, override: ov });
+    S.out = DXF.write(outPrims, S.doc.layers, { ptName, ptZ, scale: S.factor, decimals: +$('optDec').value, explodePoly: $('optExplode').checked, dedupe: $('optDedupe').checked, layerColor: lc, override: ov });
     const nPts = kept.filter(p => p.k === 'T').length; $('csvBtn').hidden = !nPts; $('csvLabel').textContent = 'Exporter les ' + fmtInt(nPts) + ' point' + (nPts > 1 ? 's' : '') + ' (.csv)';
     const size = new Blob([S.out.text]).size; S.outBytes = size;
     $('outSize').textContent = fmtSize(size);
@@ -1445,23 +1450,68 @@
     mergeLayers(counts);
     buildSnap(); buildHit(); buildPaths(); renderLayers(); updateAll();
   }
-  function createPoint(x, y, kind) {
-    const [ox, oy] = S.origin, X = x + ox, Y = y + oy, tol = 0.0005 / S.factor;
-    const twin = S.created.find(p => p.k === 'T' && Math.abs(p.x - X) < tol && Math.abs(p.y - Y) < tol && !S.del.has(p.sig));
-    if (twin) { pointMsg('Il y a déjà le point ' + twin.name + ' à cet endroit.'); return; }
-    const n = S.created.reduce((m, p) => p.k === 'T' ? Math.max(m, +p.name.slice(1) || 0) : m, 0) + 1;
+  // nom et altitude (Z, en m) d'un point : saisie de l'utilisateur, sinon ce que porte le fichier
+  function ptName(p) { const m = S.ptMeta && S.ptMeta.get(p.sig); return m && m.name !== undefined ? m.name : (p.name || ''); }
+  function ptZ(p) {
+    const m = S.ptMeta && S.ptMeta.get(p.sig); if (m && m.z !== undefined) return m.z;
+    if (p.zm !== undefined && p.zm !== null) return p.zm;
+    return p.z ? p.z * S.factor : null;
+  }
+  const zTxt = z => z === null ? '' : String(+z.toFixed(4)).replace('.', ',');
+  function ptForm(p, id) {
+    return '<div class="ptform"><label>Nom<input id="' + id + 'Name" maxlength="40" autocomplete="off" spellcheck="false" value="' + esc(ptName(p)) + '"></label>' +
+      '<label>Z (m)<input id="' + id + 'Z" inputmode="decimal" autocomplete="off" placeholder="—" value="' + esc(zTxt(ptZ(p))) + '"></label>' +
+      '<button class="tb" type="button" id="' + id + 'Ok">OK</button></div><div class="pterr" id="' + id + 'Err"></div>';
+  }
+  function bindPtForm(p, id, after) {
+    const go = () => {
+      const name = $(id + 'Name').value.replace(/\s+/g, ' ').trim().slice(0, 40), zs = $(id + 'Z').value.trim();
+      const z = zs === '' ? null : parseFloat(zs.replace(/\s/g, '').replace(',', '.'));
+      if (zs !== '' && !isFinite(z)) { $(id + 'Err').textContent = 'Z doit être un nombre en mètres (ex. 12,350).'; $(id + 'Z').focus(); return; }
+      if (name === ptName(p) && (z === null ? ptZ(p) === null : ptZ(p) !== null && Math.abs(z - ptZ(p)) < 1e-9)) { if (after) after(true); return; }
+      S.ptMeta.set(p.sig, { name, z });
+      commit('Point ' + (name || 'sans nom') + (z !== null ? ' · Z ' + fmt(z, 3) : '') + ' modifié');
+      updateAll(); if (after) after(false);
+    };
+    $(id + 'Ok').onclick = go;
+    for (const k of ['Name', 'Z']) $(id + k).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); } });
+  }
+  function createPoint(x, y, kind) { createPointAbs(x + S.origin[0], y + S.origin[1], kind); }
+  function createPointAbs(X, Y, kind, name, z) {
+    const tol = 0.0005 / S.factor, on = layerOnMap();
+    const twin = (S.ptList || []).find(p => Math.abs(p.x - X) < tol && Math.abs(p.y - Y) < tol && alive(p, on));
+    if (twin) { pointMsg('Il y a déjà un point à cet endroit' + (ptName(twin) ? ' : <b>' + esc(ptName(twin)) + '</b>' : '') + '. Tu peux le nommer ici.', twin); return; }
+    const n = S.created.reduce((m, p) => p.k === 'T' ? Math.max(m, +String(p.name).slice(1) || 0) : m, 0) + 1;
     const p = { k: 'T', layer: NEW_LAYER, x: X, y: Y, name: 'P' + n, created: true }; p.sig = sigOf(p);
+    if (name || (z !== undefined && z !== null)) S.ptMeta.set(p.sig, { name: name || p.name, z: z === undefined ? null : z });
     S.created.push(p); S.ex.prims.push(p);
     const L = S.layers.find(l => l.name === NEW_LAYER); if (L) L.on = true;
     refreshGeometry();
-    commit('Point ' + p.name + ' créé');
-    pointMsg('<b>' + p.name + '</b> créé sur ' + (kind === 'int' ? 'un croisement' : 'une extrémité') + '<br><span class="mono">X ' + fmt(toRefM(X, Y)[0], 3) + '   Y ' + fmt(toRefM(X, Y)[1], 3) + ' m</span>');
+    commit('Point ' + ptName(p) + ' créé');
+    const q = toRefM(X, Y);
+    pointMsg('<b>' + esc(ptName(p)) + '</b> créé ' + (kind === 'int' ? 'sur un croisement' : kind === 'xy' ? 'aux coordonnées' : 'sur une extrémité') + '<br><span class="mono">X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + ' m</span>', p, kind !== 'xy');
   }
   const undoPoint = () => histBack();
-  function pointMsg(html) {
+  function pointMsg(html, p, focusName) {
     const box = $('pointBox'); box.hidden = false; $('ptUndoBtn').disabled = !(S.histPos > 0);
-    box.innerHTML = (html ? '<div>' + html + '</div>' : '') +
-      '<div class="muted">Clic sur un croisement de traits (viseur jaune ✕) ou une extrémité (carré). Points sur le calque ' + NEW_LAYER + ', nommés P1, P2… ' + fmtInt(S.created.filter(p => p.k === 'T').length) + ' créé' + (S.created.filter(p => p.k === 'T').length > 1 ? 's' : '') + '.</div>';
+    const nC = S.created.filter(q => q.k === 'T').length;
+    box.innerHTML = (html ? '<div>' + html + '</div>' : '') + (p ? ptForm(p, 'pm') : '') +
+      '<details class="ptxy"' + (S.ptxyOpen ? ' open' : '') + '><summary>Créer par coordonnées</summary><div class="ptform">' +
+      '<label>X (m)<input id="pxX" inputmode="decimal" autocomplete="off"></label><label>Y (m)<input id="pxY" inputmode="decimal" autocomplete="off"></label>' +
+      '<label>Z (m)<input id="pxZ" inputmode="decimal" autocomplete="off" placeholder="—"></label><label>Nom<input id="pxN" maxlength="40" autocomplete="off" spellcheck="false"></label>' +
+      '<button class="tb" type="button" id="pxOk">Créer</button></div><div class="pterr" id="pxErr"></div><div class="muted">X / Y par rapport à l\'origine 0,0 du plan' + (S.xf ? ' (repère recalé)' : '') + '.</div></details>' +
+      '<div class="muted">Clic sur un croisement de traits (viseur jaune ✕) ou une extrémité (carré) pour créer un point ; clic sur un point existant pour le nommer. ' + fmtInt(nC) + ' créé' + (nC > 1 ? 's' : '') + ', calque ' + NEW_LAYER + '.</div>';
+    if (p) { bindPtForm(p, 'pm', same => { pointMsg(same ? '' : '<b>' + esc(ptName(p) || 'Point') + '</b> enregistré.'); }); if (focusName !== false) { const i = $('pmName'); i.focus(); i.select(); } }
+    box.querySelector('.ptxy').addEventListener('toggle', e => { S.ptxyOpen = e.target.open; });
+    const mk = () => {
+      const v = id => { const t = $(id).value.trim(); return t === '' ? null : parseFloat(t.replace(/\s/g, '').replace(',', '.')); };
+      const X = v('pxX'), Y = v('pxY'), Z = v('pxZ');
+      if (X === null || Y === null || !isFinite(X) || !isFinite(Y) || (Z !== null && !isFinite(Z))) { $('pxErr').textContent = 'Entre X et Y en mètres (ex. 12,500). Z est facultatif.'; return; }
+      const a = fromRefMx(X, Y, S.factor, S.xf);
+      createPointAbs(a[0], a[1], 'xy', $('pxN').value.replace(/\s+/g, ' ').trim().slice(0, 40), Z);
+    };
+    $('pxOk').onclick = mk;
+    for (const id of ['pxX', 'pxY', 'pxZ', 'pxN']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); mk(); } });
   }
 
   // ---------- Couper (ajuster) aux intersections ----------
@@ -1738,19 +1788,20 @@
     const box = $('infoBox'), p = S.info; if (!p) { box.hidden = true; return; }
     const L = S.layers.find(l => l.name === p.layer) || { color: 7 }, f = S.factor, m = v => fmt(v * f, 3);
     let det = '';
-    if (p.k === 'T') { const q = toRefM(p.x, p.y); det = 'X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + ' m'; }
+    if (p.k === 'T') { const q = toRefM(p.x, p.y), z = ptZ(p); det = 'X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + (z !== null ? '   Z ' + fmt(z, 3) : '') + ' m'; }
     else if (p.k === 'C') det = 'Rayon ' + m(p.r) + ' m · Ø ' + m(2 * p.r) + ' m';
     else if (p.k === 'A') det = 'Rayon ' + m(p.r) + ' m · longueur ' + m(primLength(p)) + ' m';
     else if (p.k === 'P') det = p.pts.length + ' sommets' + (p.closed ? ', fermée' : '') + ' · longueur ' + m(primLength(p)) + ' m';
     else det = 'Longueur ' + m(primLength(p)) + ' m';
     box.innerHTML = '<div class="lname"><i style="background:' + ACI[L.color] + '"></i>' + esc(L.rename || p.layer) + '</div>' + (L.rename ? '<div class="muted">nom d\'origine : ' + esc(p.layer) + '</div>' : '') +
-      '<div>' + TYPE[p.k] + (p.name ? ' ' + esc(p.name) : '') + '</div><div class="mono">' + det + '</div>' +
+      '<div>' + TYPE[p.k] + (p.k === 'T' ? (ptName(p) ? ' ' + esc(ptName(p)) : '') : p.name ? ' ' + esc(p.name) : '') + '</div><div class="mono">' + det + '</div>' + (p.k === 'T' ? ptForm(p, 'inf') : '') +
       '<div class="acts"><button class="tb" type="button" id="infHide">Masquer ce calque</button><button class="tb" type="button" id="infColor">Couleur</button><button class="tb" type="button" id="infDel" title="Touche Suppr">Supprimer</button><button class="tb" type="button" id="infMove">Changer de calque</button><button class="tb" type="button" id="infRen">Renommer</button><button class="tb" type="button" id="infFind">Voir dans la liste</button></div>';
     box.hidden = false;
     $('infHide').onclick = () => { L.on = false; L.auto = false; S.info = null; box.hidden = true; changed('Calque retiré : ' + shown(L)); };
     $('infColor').onclick = ev => openColorPop(S.layers.indexOf(L), ev.currentTarget);
     $('infRen').onclick = () => startRename(S.layers.indexOf(L));
     $('infDel').onclick = deleteInfo;
+    if (p.k === 'T') bindPtForm(p, 'inf', () => showInfo());
     $('infMove').onclick = ev => openMovePop(ev.currentTarget, new Set([p]));
     $('infFind').onclick = () => {
       $('layerFilter').value = ''; renderLayers();
@@ -1787,7 +1838,7 @@
   // ---------- Export des points ----------
   async function exportCsv() {
     const on = layerOnMap(), dec = +$('optDec').value, f = S.factor; let k = 0;
-    const rows = S.ex.prims.filter(p => p.k === 'T' && alive(p, on)).map(p => (p.name || 'PT' + (++k)) + ',' + toRefM(p.x, p.y)[0].toFixed(dec) + ',' + toRefM(p.x, p.y)[1].toFixed(dec) + ',0');
+    const rows = S.ex.prims.filter(p => p.k === 'T' && alive(p, on)).map(p => { const z = ptZ(p), q = toRefM(p.x, p.y); return (ptName(p).replace(/,/g, ' ') || 'PT' + (++k)) + ',' + q[0].toFixed(dec) + ',' + q[1].toFixed(dec) + ',' + (z === null ? '0' : z.toFixed(Math.max(3, dec))); });
     const text = rows.join('\r\n') + '\r\n', name = baseName() + '_points.csv', msg = $('dlMsg');
     if (downloads) {
       try { await downloads.save({ filename: name, data: text }); msg.textContent = 'Points enregistrés : ' + name + ' (Nom, X, Y, Z).'; }

@@ -293,6 +293,16 @@ dialog.dlg .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: fle
 .info-box .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .info-box .acts .tb { font-size: 12px; padding: 4px 8px; }
 .info-box .muted { color: #9aa59f; font-size: 12px; }
+.info-box .ptform { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; margin-top: 4px; }
+.info-box .ptform label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: #c3ccc7; }
+.info-box .ptform input { font: 600 13px var(--f-mono); width: 110px; padding: 4px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.08); color: #fff; }
+.info-box .ptform input:focus { outline: 2px solid #ff8a3d; outline-offset: 0; border-color: transparent; }
+.info-box .ptform input[id$="Z"], .info-box .ptform #pxX, .info-box .ptform #pxY { width: 92px; }
+.info-box .ptform .tb { font-size: 12px; padding: 5px 10px; }
+.info-box .pterr { color: #f07070; font-size: 12px; min-height: 0; }
+.info-box .pterr:empty { display: none; }
+.info-box .ptxy { border-top: 1px solid rgba(255,255,255,.14); padding-top: 5px; margin-top: 3px; }
+.info-box .ptxy summary { cursor: pointer; color: #ffb27a; font-weight: 600; }
 .dup-box { position: absolute; top: 80px; right: 10px; font-size: 12.5px; color: var(--canvas-fg); background: rgba(16,21,19,.92); border: 1px solid rgba(255,255,255,.14); padding: 8px 10px; border-radius: 5px; line-height: 1.5; max-width: min(330px, calc(100% - 20px)); }
 .dup-box b { font-family: var(--f-mono); font-size: 14px; font-weight: 500; }
 .dup-box .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
@@ -331,7 +341,7 @@ dialog.dlg .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: fle
 
 <div class="app">
   <header class="top">
-    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.21.3</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.21.4</span></div>
     <div class="fileinfo" id="fileinfo"></div>
     <div class="spacer"></div>
     <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
@@ -577,7 +587,7 @@ const DXF = (() => {
           while (pair && pair[0] === 0 && pair[1] === 'VERTEX') e.verts.push(readEnt());
           if (pair && pair[0] === 0 && pair[1] === 'SEQEND') readEnt();
         } else if (e.type === 'INSERT') {
-          while (pair && pair[0] === 0 && (pair[1] === 'ATTRIB')) readEnt();
+          while (pair && pair[0] === 0 && (pair[1] === 'ATTRIB')) { const a = readEnt(); (e.attribs || (e.attribs = [])).push({ tag: getP(a.p, 2, ''), val: getP(a.p, 1, '') }); }
           if (pair && pair[0] === 0 && pair[1] === 'SEQEND') readEnt();
         }
         out.push(e);
@@ -649,6 +659,17 @@ const DXF = (() => {
     HATCH: 'hachure', SOLID: 'hachure', TRACE: 'hachure', WIPEOUT: 'hachure', MPOLYGON: 'hachure',
   };
 
+  // attributs de bloc qui donnent le nom et l'altitude d'un point
+  const NAME_TAG = /^(NOM|NAME|MATRICULE|MAT|NUM|NUMERO|NUMÉRO|NO|N°|ID|PT|POINT|PNT|REPERE|REPÈRE|REF|CIBLE|STATION)$/i, Z_TAG = /^(Z|ALT|ALTI|ALTITUDE|H|NGF|COTE|NIV|NIVEAU|ELEV|ELEVATION|HAUTEUR)$/i;
+  function ptAttribs(list) {
+    let name = '', z = null;
+    for (const { tag, val } of list) {
+      const v = (val || '').trim(); if (!v) continue;
+      if (z === null && Z_TAG.test(tag.trim())) { const n = parseFloat(v.replace(',', '.').replace(/[^0-9.+-]/g, '')); if (isFinite(n)) z = n; }
+      else if (!name && NAME_TAG.test(tag.trim())) name = v.slice(0, 40);
+    }
+    return { name, z };
+  }
   // Éclate tout le dessin en primitives simples, en coordonnées du fichier (unités source)
   // prim : {k:'L'|'A'|'C'|'P'|'T', layer, ...}
   function explode(doc, opt) {
@@ -723,7 +744,7 @@ const DXF = (() => {
       return out;
     }
 
-    function walk(ents, m, parentLayer, depth, parentColor) {
+    function walk(ents, m, parentLayer, depth, parentColor, zo) {
       for (const e of ents) {
         if (depth === 0 && getP(e.p, 67, '0') === '1') continue; // espace papier
         let layer = getP(e.p, 8, '0');
@@ -731,6 +752,7 @@ const DXF = (() => {
         let ec = parseInt(getP(e.p, 62, '256'), 10); if (ec === 0) ec = parentColor; else if (!(ec >= 1 && ec <= 255)) ec = null;
         const n0 = prims.length;
         const t = e.type, cat = CAT[t] || (t === 'INSERT' ? 'insert' : 'autre');
+        if (t === 'ATTDEF' && opt.keepPoints && parentLayer !== null) continue; // définition d'attribut d'un bloc : sert au nom des points, rien à retirer
         if (cat !== 'geo' && cat !== 'insert' && !(cat === 'point' && opt.keepPoints)) {
           stats[cat] = (stats[cat] || 0) + 1;
           perLayerDropped.set(layer, (perLayerDropped.get(layer) || 0) + 1);
@@ -742,7 +764,7 @@ const DXF = (() => {
             const a = ap(m, num(p, 10), num(p, 20)), b = ap(m, num(p, 11), num(p, 21));
             prims.push({ k: 'L', layer, x1: a[0], y1: a[1], x2: b[0], y2: b[1] }); stats.geo++; break;
           }
-          case 'POINT': { const a = ap(m, num(p, 10), num(p, 20)); prims.push({ k: 'T', layer, x: a[0], y: a[1] }); stats.point++; break; }
+          case 'POINT': { const a = ap(m, num(p, 10), num(p, 20)), z = num(p, 30) + (zo || 0); const q = { k: 'T', layer, x: a[0], y: a[1] }; if (z) q.z = z; prims.push(q); stats.point++; break; }
           case 'CIRCLE': case 'ARC': {
             const mm = mul(m, ocs(p));
             emitArc(layer, mm, num(p, 10), num(p, 20), num(p, 40), num(p, 50), num(p, 51), t === 'CIRCLE'); stats.geo++; break;
@@ -780,7 +802,16 @@ const DXF = (() => {
               const ix = num(p, 10) + c * ox - s * oy, iy = num(p, 20) + s * ox + c * oy;
               let loc = [c * sx, s * sx, -s * sy, c * sy, ix, iy];
               loc = mul(loc, [1, 0, 0, 1, -blk.bx, -blk.by]);
-              walk(blk.ents, mul(m, mul(ocs(p), loc)), layer, depth + 1, ec);
+              const nb = prims.length;
+              walk(blk.ents, mul(m, mul(ocs(p), loc)), layer, depth + 1, ec, (zo || 0) + num(p, 30));
+              if (e.attribs && opt.keepPoints) { // nom / altitude d'un point portés par les attributs du bloc (cible de géomètre, point exporté par l'outil)
+                const at = ptAttribs(e.attribs);
+                if (at.name || at.z !== null) {
+                  let pts = 0;
+                  for (let k = nb; k < prims.length; k++) if (prims[k].k === 'T') { pts++; if (at.name) prims[k].name = at.name; if (at.z !== null) prims[k].zm = at.z; }
+                  if (!pts && at.z !== null && r === 0 && q === 0) { const a = ap(m, num(p, 10), num(p, 20)); const pt = { k: 'T', layer, x: a[0], y: a[1], zm: at.z }; if (at.name) pt.name = at.name; prims.push(pt); stats.point++; }
+                }
+              }
             }
             break;
           }
@@ -788,7 +819,7 @@ const DXF = (() => {
         if (ec && t !== 'INSERT') for (let k = n0; k < prims.length; k++) prims[k].c = ec;
       }
     }
-    walk(doc.ents, opt.matrix || I, null, 0, null);
+    walk(doc.ents, opt.matrix || I, null, 0, null, 0);
     return { prims, stats, usedBlocks, perLayerDropped };
   }
 
@@ -836,7 +867,9 @@ const DXF = (() => {
       out.push('0\nARC\n8\n' + L + '\n10\n' + X + '\n20\n' + Y + '\n30\n0\n40\n' + R + '\n50\n' + fa(a0) + '\n51\n' + fa(a1) + '\n' + CS); count++;
       ext(x - r, y - r); ext(x + r, y + r);
     };
-    let CS = '';
+    let CS = '', usePt = false;
+    const fz = v => { let s = v.toFixed(Math.max(3, dec)); s = s.replace(/0+$/, '').replace(/\.$/, ''); return s === '-0' ? '0' : s; };
+    const txt = v => String(v).replace(/[\r\n]+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\x20-\x7e]/g, '_').slice(0, 40);
     for (const p of prims) {
       const L = lmap.get(p.layer); CS = p.c && !(o.override && o.override.has(p.layer)) ? '62\n' + p.c + '\n' : '';
       if (p.k === 'L') line(L, p.x1, p.y1, p.x2, p.y2);
@@ -847,7 +880,14 @@ const DXF = (() => {
         if (seen) { const k = 'C' + X + ',' + Y + ',' + R; if (seen.has(k)) { dups++; continue; } seen.add(k); }
         out.push('0\nCIRCLE\n8\n' + L + '\n10\n' + X + '\n20\n' + Y + '\n30\n0\n40\n' + R + '\n' + CS); count++; ext(p.x - p.r, p.y - p.r); ext(p.x + p.r, p.y + p.r);
       } else if (p.k === 'T') {
-        out.push('0\nPOINT\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n0\n' + CS); count++; ext(p.x, p.y);
+        const nm = o.ptName ? o.ptName(p) : (p.name || ''), z = o.ptZ ? o.ptZ(p) : (p.zm ?? (p.z ? p.z * sc : null)), Z = z === null || !isFinite(z) ? '0' : fz(z);
+        if (nm || z !== null) { // point nommé : bloc PT_STATION (un POINT) + attributs NOM et ALT, invisibles
+          usePt = true;
+          const att = (tag, v) => '0\nATTRIB\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n' + Z + '\n40\n0.2\n1\n' + v + '\n2\n' + tag + '\n70\n1\n';
+          out.push('0\nINSERT\n8\n' + L + '\n' + CS + '66\n1\n2\nPT_STATION\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n' + Z + '\n' +
+            att('NOM', txt(nm)) + att('ALT', z === null ? '' : Z) + '0\nSEQEND\n8\n' + L + '\n');
+        } else out.push('0\nPOINT\n8\n' + L + '\n10\n' + f(p.x) + '\n20\n' + f(p.y) + '\n30\n0\n' + CS);
+        count++; ext(p.x, p.y);
       } else if (p.k === 'P') {
         const pts = p.pts, n = pts.length, segs = p.closed ? n : n - 1;
         if (explodePoly) {
@@ -877,7 +917,9 @@ const DXF = (() => {
     h += '0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLTYPE\n70\n1\n0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0\n0\nENDTAB\n';
     h += '0\nTABLE\n2\nLAYER\n70\n' + (names.length + 1) + '\n0\nLAYER\n2\n0\n70\n0\n62\n7\n6\nCONTINUOUS\n';
     for (const [orig, nm] of lmap) { if (nm === '0') continue; const c = (layersInfo.get(orig) || {}).color || 7; h += '0\nLAYER\n2\n' + nm + '\n70\n0\n62\n' + (o.layerColor ? (o.layerColor.get(orig) || c) : c) + '\n6\nCONTINUOUS\n'; }
-    h += '0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
+    const attdef = (tag, prompt) => '0\nATTDEF\n8\n0\n10\n0\n20\n0\n30\n0\n40\n0.2\n1\n\n3\n' + prompt + '\n2\n' + tag + '\n70\n1\n';
+    const blocks = usePt ? '0\nBLOCK\n8\n0\n2\nPT_STATION\n70\n2\n10\n0\n20\n0\n30\n0\n3\nPT_STATION\n0\nPOINT\n8\n0\n10\n0\n20\n0\n30\n0\n' + attdef('NOM', 'Nom du point') + attdef('ALT', 'Altitude') + '0\nENDBLK\n8\n0\n' : '';
+    h += '0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n' + blocks + '0\nENDSEC\n0\nSECTION\n2\nENTITIES\n';
     const text = h + out.join('') + '0\nENDSEC\n0\nEOF\n';
     return { text: text.replace(/\n/g, '\r\n'), count, dups, tiny, layers: names.length, lmap, ext: [minx * sc, miny * sc, maxx * sc, maxy * sc] };
   }
@@ -948,7 +990,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
   const AUTO_OFF = /(cot(e|ation)|dim|text|txt|anno|hach|hatch|cartouche|title|legend|mobilier|furn|symb|nomenc|grille|grid)/i;
 
   // ---------- Plusieurs plans : un onglet par fichier ----------
-  const PK = ['fh', 'fhOk', 'savedAt', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
+  const PK = ['fh', 'fhOk', 'savedAt', 'ptMeta', 'ptList', 'xf', 'outBase', 'hist', 'histPos', 'moves', 'newLayers', 'name', 'size', 'doc', 'ex', 'layers', 'factor', 'unitReason', 'declared', 'ext', 'rext', 'origin', 'paths', 'snap', 'hit', 'del', 'undo', 'created', 'sel', 'info',
     'userView', 'out', 'outBytes', 'reused', 'sample', 'delGroup', 'selGroup', 'dupData', 'originDist'];
   const plans = []; let cur = -1;
   function savePlan() { if (cur < 0 || !plans[cur]) return; const st = plans[cur].st; for (const k of PK) st[k] = S[k]; st.view = Object.assign({}, S.view); }
@@ -1168,7 +1210,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
   function rebuild(first) {
     const doc = S.doc;
     S.ex = DXF.explode(doc, { keepPoints: $('optPoints').checked });
-    if (first) { S.del = new Set(); S.hist = []; S.histPos = -1; S.created = []; S.info = null; S.moves = new Map(); S.newLayers = []; }
+    if (first) { S.ptMeta = new Map(); S.del = new Set(); S.hist = []; S.histPos = -1; S.created = []; S.info = null; S.moves = new Map(); S.newLayers = []; }
     S.ex.prims.push(...S.created);
     for (const p of S.ex.prims) {
       if (p._ol !== undefined) { p.layer = p._ol; p.c = p._oc; } else { p._ol = p.layer; p._oc = p.c; }
@@ -1209,7 +1251,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
   // ---------- Historique des actions ----------
   function snapState() {
     return { del: [...S.del], moves: [...S.moves], created: S.created.slice(), newLayers: S.newLayers.map(o => Object.assign({}, o)),
-      layers: S.layers.map(l => [l.name, l.on, l.color, l.colorSet, l.rename]), factor: S.factor, unitReason: S.unitReason, outBase: S.outBase, xf: S.xf ? Object.assign({}, S.xf) : null };
+      ptMeta: [...(S.ptMeta || new Map())].map(([k, v]) => [k, Object.assign({}, v)]), layers: S.layers.map(l => [l.name, l.on, l.color, l.colorSet, l.rename]), factor: S.factor, unitReason: S.unitReason, outBase: S.outBase, xf: S.xf ? Object.assign({}, S.xf) : null };
   }
   function commit(label) {
     if (!S.hist) return;
@@ -1219,7 +1261,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
     S.histPos = S.hist.length - 1; renderHist(); updateEraseBar(); dirtyUI();
   }
   function restoreState(sn) {
-    S.del = new Set(sn.del); S.moves = new Map(sn.moves); S.created = sn.created.slice(); S.newLayers = sn.newLayers.map(o => Object.assign({}, o));
+    S.del = new Set(sn.del); S.moves = new Map(sn.moves); S.created = sn.created.slice(); S.newLayers = sn.newLayers.map(o => Object.assign({}, o)); S.ptMeta = new Map((sn.ptMeta || []).map(([k, v]) => [k, Object.assign({}, v)]));
     S.ex.prims = S.ex.prims.filter(p => !p.created).concat(S.created);
     for (const p of S.ex.prims) { if (p._ol !== undefined) { p.layer = p._ol; p.c = p._oc; } const mv = S.moves.get(p.sig); if (mv) { p.layer = mv; p.c = undefined; } }
     const xfChanged = JSON.stringify(S.xf || null) !== JSON.stringify(sn.xf || null);
@@ -1316,6 +1358,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
     return out;
   }
   function buildHit() {
+    S.ptList = S.ex.prims.filter(p => p.k === 'T');
     const w = Math.max(S.ext[2] - S.ext[0], S.ext[3] - S.ext[1], 1e-9), cell = w / 128, grid = new Map(), big = [];
     S.ex.prims.forEach((p, i) => {
       const q = polyOf(p); let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -1344,8 +1387,8 @@ if (typeof module !== 'undefined') module.exports = DXF;
     let best = null, bd = tol * tol;
     for (const i of seen) {
       const p = S.ex.prims[i]; if (!alive(p, on)) continue;
-      let d = primDist2(p, wx, wy); if (p.k === 'T') d *= 0.5; // priorité aux points
-      if (d <= bd) { bd = d; best = p; }
+      let d = primDist2(p, wx, wy); if (p.k === 'T') d *= 0.05; // priorité nette aux points (cible au milieu d'une croix)
+      if (d < bd || (d === bd && !(best && best.k === 'T'))) { bd = d; best = p; }
     }
     return best;
   }
@@ -1643,13 +1686,15 @@ if (typeof module !== 'undefined') module.exports = DXF;
         ctx.fillStyle = 'rgba(16,21,19,.85)'; ctx.fillRect(lx - 4, ly - 9, tw + 8, 18); ctx.fillStyle = '#ff8f8f'; ctx.fillText(label, lx, ly);
       }
     }
-    // noms des points créés
-    if (S.showPts && S.created.length) {
+    // nom et altitude des points
+    if (S.showPts && S.ptList && S.ptList.length) {
       const on = layerOnMap(); ctx.font = '600 11px ' + getComputedStyle(document.body).getPropertyValue('--f-mono'); ctx.textBaseline = 'bottom';
-      for (const p of S.created) {
-        if (p.k !== 'T' || !alive(p, on)) continue; const [x, y] = toScreen(p.x - S.origin[0], p.y - S.origin[1]);
-        if (x < -40 || y < -20 || x > W + 40 || y > H + 20) continue;
-        ctx.lineWidth = 3; ctx.strokeStyle = K.halo; ctx.strokeText(p.name, x + 7, y - 5); ctx.fillStyle = K.label; ctx.fillText(p.name, x + 7, y - 5);
+      for (const p of S.ptList) {
+        const nm = ptName(p), z = ptZ(p); if (!nm && z === null) continue;
+        const [x, y] = toScreen(p.x - S.origin[0], p.y - S.origin[1]);
+        if (x < -60 || y < -20 || x > W + 60 || y > H + 20 || !alive(p, on)) continue;
+        const t = nm + (z !== null ? (nm ? ' · ' : 'Z ') + fmt(z, 3) : '');
+        ctx.lineWidth = 3; ctx.strokeStyle = K.halo; ctx.strokeText(t, x + 7, y - 5); ctx.fillStyle = K.label; ctx.fillText(t, x + 7, y - 5);
       }
     }
     // tracé : aperçus
@@ -1765,7 +1810,9 @@ if (typeof module !== 'undefined') module.exports = DXF;
       const [wx, wy] = toWorld(e.offsetX, e.offsetY); xfClick(wx, wy, tolPx / S.view.s); draw();
     }
     if (!moved && pointers.size === 0 && dragStart && e.button === 0 && S.mode === 'point') {
-      const [wx, wy] = toWorld(e.offsetX, e.offsetY); const sp = snapAt(wx, wy, tolPx / S.view.s);
+      const [wx, wy] = toWorld(e.offsetX, e.offsetY), hitPt = pick(wx, wy, tolPx / S.view.s);
+      if (hitPt && hitPt.k === 'T') { pointMsg('Point existant : donne-lui un nom et un Z.', hitPt); draw(); return; }
+      const sp = snapAt(wx, wy, tolPx / S.view.s);
       if (sp) createPoint(sp.x, sp.y, sp.kind); else pointMsg('Pas de croisement ici. Approche le viseur d\'un croisement de traits : il devient jaune quand il accroche.');
     }
     if (!moved && S.measure && pointers.size === 0) {
@@ -2062,7 +2109,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
     }
     const lc = new Map(), ov = new Set();
     for (const l of S.layers) { const n = shown(l); if (!lc.has(n) || l.on) lc.set(n, l.color); if (l.colorSet) ov.add(n); }
-    S.out = DXF.write(outPrims, S.doc.layers, { scale: S.factor, decimals: +$('optDec').value, explodePoly: $('optExplode').checked, dedupe: $('optDedupe').checked, layerColor: lc, override: ov });
+    S.out = DXF.write(outPrims, S.doc.layers, { ptName, ptZ, scale: S.factor, decimals: +$('optDec').value, explodePoly: $('optExplode').checked, dedupe: $('optDedupe').checked, layerColor: lc, override: ov });
     const nPts = kept.filter(p => p.k === 'T').length; $('csvBtn').hidden = !nPts; $('csvLabel').textContent = 'Exporter les ' + fmtInt(nPts) + ' point' + (nPts > 1 ? 's' : '') + ' (.csv)';
     const size = new Blob([S.out.text]).size; S.outBytes = size;
     $('outSize').textContent = fmtSize(size);
@@ -2334,23 +2381,68 @@ if (typeof module !== 'undefined') module.exports = DXF;
     mergeLayers(counts);
     buildSnap(); buildHit(); buildPaths(); renderLayers(); updateAll();
   }
-  function createPoint(x, y, kind) {
-    const [ox, oy] = S.origin, X = x + ox, Y = y + oy, tol = 0.0005 / S.factor;
-    const twin = S.created.find(p => p.k === 'T' && Math.abs(p.x - X) < tol && Math.abs(p.y - Y) < tol && !S.del.has(p.sig));
-    if (twin) { pointMsg('Il y a déjà le point ' + twin.name + ' à cet endroit.'); return; }
-    const n = S.created.reduce((m, p) => p.k === 'T' ? Math.max(m, +p.name.slice(1) || 0) : m, 0) + 1;
+  // nom et altitude (Z, en m) d'un point : saisie de l'utilisateur, sinon ce que porte le fichier
+  function ptName(p) { const m = S.ptMeta && S.ptMeta.get(p.sig); return m && m.name !== undefined ? m.name : (p.name || ''); }
+  function ptZ(p) {
+    const m = S.ptMeta && S.ptMeta.get(p.sig); if (m && m.z !== undefined) return m.z;
+    if (p.zm !== undefined && p.zm !== null) return p.zm;
+    return p.z ? p.z * S.factor : null;
+  }
+  const zTxt = z => z === null ? '' : String(+z.toFixed(4)).replace('.', ',');
+  function ptForm(p, id) {
+    return '<div class="ptform"><label>Nom<input id="' + id + 'Name" maxlength="40" autocomplete="off" spellcheck="false" value="' + esc(ptName(p)) + '"></label>' +
+      '<label>Z (m)<input id="' + id + 'Z" inputmode="decimal" autocomplete="off" placeholder="—" value="' + esc(zTxt(ptZ(p))) + '"></label>' +
+      '<button class="tb" type="button" id="' + id + 'Ok">OK</button></div><div class="pterr" id="' + id + 'Err"></div>';
+  }
+  function bindPtForm(p, id, after) {
+    const go = () => {
+      const name = $(id + 'Name').value.replace(/\s+/g, ' ').trim().slice(0, 40), zs = $(id + 'Z').value.trim();
+      const z = zs === '' ? null : parseFloat(zs.replace(/\s/g, '').replace(',', '.'));
+      if (zs !== '' && !isFinite(z)) { $(id + 'Err').textContent = 'Z doit être un nombre en mètres (ex. 12,350).'; $(id + 'Z').focus(); return; }
+      if (name === ptName(p) && (z === null ? ptZ(p) === null : ptZ(p) !== null && Math.abs(z - ptZ(p)) < 1e-9)) { if (after) after(true); return; }
+      S.ptMeta.set(p.sig, { name, z });
+      commit('Point ' + (name || 'sans nom') + (z !== null ? ' · Z ' + fmt(z, 3) : '') + ' modifié');
+      updateAll(); if (after) after(false);
+    };
+    $(id + 'Ok').onclick = go;
+    for (const k of ['Name', 'Z']) $(id + k).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } else if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); } });
+  }
+  function createPoint(x, y, kind) { createPointAbs(x + S.origin[0], y + S.origin[1], kind); }
+  function createPointAbs(X, Y, kind, name, z) {
+    const tol = 0.0005 / S.factor, on = layerOnMap();
+    const twin = (S.ptList || []).find(p => Math.abs(p.x - X) < tol && Math.abs(p.y - Y) < tol && alive(p, on));
+    if (twin) { pointMsg('Il y a déjà un point à cet endroit' + (ptName(twin) ? ' : <b>' + esc(ptName(twin)) + '</b>' : '') + '. Tu peux le nommer ici.', twin); return; }
+    const n = S.created.reduce((m, p) => p.k === 'T' ? Math.max(m, +String(p.name).slice(1) || 0) : m, 0) + 1;
     const p = { k: 'T', layer: NEW_LAYER, x: X, y: Y, name: 'P' + n, created: true }; p.sig = sigOf(p);
+    if (name || (z !== undefined && z !== null)) S.ptMeta.set(p.sig, { name: name || p.name, z: z === undefined ? null : z });
     S.created.push(p); S.ex.prims.push(p);
     const L = S.layers.find(l => l.name === NEW_LAYER); if (L) L.on = true;
     refreshGeometry();
-    commit('Point ' + p.name + ' créé');
-    pointMsg('<b>' + p.name + '</b> créé sur ' + (kind === 'int' ? 'un croisement' : 'une extrémité') + '<br><span class="mono">X ' + fmt(toRefM(X, Y)[0], 3) + '   Y ' + fmt(toRefM(X, Y)[1], 3) + ' m</span>');
+    commit('Point ' + ptName(p) + ' créé');
+    const q = toRefM(X, Y);
+    pointMsg('<b>' + esc(ptName(p)) + '</b> créé ' + (kind === 'int' ? 'sur un croisement' : kind === 'xy' ? 'aux coordonnées' : 'sur une extrémité') + '<br><span class="mono">X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + ' m</span>', p, kind !== 'xy');
   }
   const undoPoint = () => histBack();
-  function pointMsg(html) {
+  function pointMsg(html, p, focusName) {
     const box = $('pointBox'); box.hidden = false; $('ptUndoBtn').disabled = !(S.histPos > 0);
-    box.innerHTML = (html ? '<div>' + html + '</div>' : '') +
-      '<div class="muted">Clic sur un croisement de traits (viseur jaune ✕) ou une extrémité (carré). Points sur le calque ' + NEW_LAYER + ', nommés P1, P2… ' + fmtInt(S.created.filter(p => p.k === 'T').length) + ' créé' + (S.created.filter(p => p.k === 'T').length > 1 ? 's' : '') + '.</div>';
+    const nC = S.created.filter(q => q.k === 'T').length;
+    box.innerHTML = (html ? '<div>' + html + '</div>' : '') + (p ? ptForm(p, 'pm') : '') +
+      '<details class="ptxy"' + (S.ptxyOpen ? ' open' : '') + '><summary>Créer par coordonnées</summary><div class="ptform">' +
+      '<label>X (m)<input id="pxX" inputmode="decimal" autocomplete="off"></label><label>Y (m)<input id="pxY" inputmode="decimal" autocomplete="off"></label>' +
+      '<label>Z (m)<input id="pxZ" inputmode="decimal" autocomplete="off" placeholder="—"></label><label>Nom<input id="pxN" maxlength="40" autocomplete="off" spellcheck="false"></label>' +
+      '<button class="tb" type="button" id="pxOk">Créer</button></div><div class="pterr" id="pxErr"></div><div class="muted">X / Y par rapport à l\'origine 0,0 du plan' + (S.xf ? ' (repère recalé)' : '') + '.</div></details>' +
+      '<div class="muted">Clic sur un croisement de traits (viseur jaune ✕) ou une extrémité (carré) pour créer un point ; clic sur un point existant pour le nommer. ' + fmtInt(nC) + ' créé' + (nC > 1 ? 's' : '') + ', calque ' + NEW_LAYER + '.</div>';
+    if (p) { bindPtForm(p, 'pm', same => { pointMsg(same ? '' : '<b>' + esc(ptName(p) || 'Point') + '</b> enregistré.'); }); if (focusName !== false) { const i = $('pmName'); i.focus(); i.select(); } }
+    box.querySelector('.ptxy').addEventListener('toggle', e => { S.ptxyOpen = e.target.open; });
+    const mk = () => {
+      const v = id => { const t = $(id).value.trim(); return t === '' ? null : parseFloat(t.replace(/\s/g, '').replace(',', '.')); };
+      const X = v('pxX'), Y = v('pxY'), Z = v('pxZ');
+      if (X === null || Y === null || !isFinite(X) || !isFinite(Y) || (Z !== null && !isFinite(Z))) { $('pxErr').textContent = 'Entre X et Y en mètres (ex. 12,500). Z est facultatif.'; return; }
+      const a = fromRefMx(X, Y, S.factor, S.xf);
+      createPointAbs(a[0], a[1], 'xy', $('pxN').value.replace(/\s+/g, ' ').trim().slice(0, 40), Z);
+    };
+    $('pxOk').onclick = mk;
+    for (const id of ['pxX', 'pxY', 'pxZ', 'pxN']) $(id).addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); mk(); } });
   }
 
   // ---------- Couper (ajuster) aux intersections ----------
@@ -2627,19 +2719,20 @@ if (typeof module !== 'undefined') module.exports = DXF;
     const box = $('infoBox'), p = S.info; if (!p) { box.hidden = true; return; }
     const L = S.layers.find(l => l.name === p.layer) || { color: 7 }, f = S.factor, m = v => fmt(v * f, 3);
     let det = '';
-    if (p.k === 'T') { const q = toRefM(p.x, p.y); det = 'X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + ' m'; }
+    if (p.k === 'T') { const q = toRefM(p.x, p.y), z = ptZ(p); det = 'X ' + fmt(q[0], 3) + '   Y ' + fmt(q[1], 3) + (z !== null ? '   Z ' + fmt(z, 3) : '') + ' m'; }
     else if (p.k === 'C') det = 'Rayon ' + m(p.r) + ' m · Ø ' + m(2 * p.r) + ' m';
     else if (p.k === 'A') det = 'Rayon ' + m(p.r) + ' m · longueur ' + m(primLength(p)) + ' m';
     else if (p.k === 'P') det = p.pts.length + ' sommets' + (p.closed ? ', fermée' : '') + ' · longueur ' + m(primLength(p)) + ' m';
     else det = 'Longueur ' + m(primLength(p)) + ' m';
     box.innerHTML = '<div class="lname"><i style="background:' + ACI[L.color] + '"></i>' + esc(L.rename || p.layer) + '</div>' + (L.rename ? '<div class="muted">nom d\'origine : ' + esc(p.layer) + '</div>' : '') +
-      '<div>' + TYPE[p.k] + (p.name ? ' ' + esc(p.name) : '') + '</div><div class="mono">' + det + '</div>' +
+      '<div>' + TYPE[p.k] + (p.k === 'T' ? (ptName(p) ? ' ' + esc(ptName(p)) : '') : p.name ? ' ' + esc(p.name) : '') + '</div><div class="mono">' + det + '</div>' + (p.k === 'T' ? ptForm(p, 'inf') : '') +
       '<div class="acts"><button class="tb" type="button" id="infHide">Masquer ce calque</button><button class="tb" type="button" id="infColor">Couleur</button><button class="tb" type="button" id="infDel" title="Touche Suppr">Supprimer</button><button class="tb" type="button" id="infMove">Changer de calque</button><button class="tb" type="button" id="infRen">Renommer</button><button class="tb" type="button" id="infFind">Voir dans la liste</button></div>';
     box.hidden = false;
     $('infHide').onclick = () => { L.on = false; L.auto = false; S.info = null; box.hidden = true; changed('Calque retiré : ' + shown(L)); };
     $('infColor').onclick = ev => openColorPop(S.layers.indexOf(L), ev.currentTarget);
     $('infRen').onclick = () => startRename(S.layers.indexOf(L));
     $('infDel').onclick = deleteInfo;
+    if (p.k === 'T') bindPtForm(p, 'inf', () => showInfo());
     $('infMove').onclick = ev => openMovePop(ev.currentTarget, new Set([p]));
     $('infFind').onclick = () => {
       $('layerFilter').value = ''; renderLayers();
@@ -2676,7 +2769,7 @@ if (typeof module !== 'undefined') module.exports = DXF;
   // ---------- Export des points ----------
   async function exportCsv() {
     const on = layerOnMap(), dec = +$('optDec').value, f = S.factor; let k = 0;
-    const rows = S.ex.prims.filter(p => p.k === 'T' && alive(p, on)).map(p => (p.name || 'PT' + (++k)) + ',' + toRefM(p.x, p.y)[0].toFixed(dec) + ',' + toRefM(p.x, p.y)[1].toFixed(dec) + ',0');
+    const rows = S.ex.prims.filter(p => p.k === 'T' && alive(p, on)).map(p => { const z = ptZ(p), q = toRefM(p.x, p.y); return (ptName(p).replace(/,/g, ' ') || 'PT' + (++k)) + ',' + q[0].toFixed(dec) + ',' + q[1].toFixed(dec) + ',' + (z === null ? '0' : z.toFixed(Math.max(3, dec))); });
     const text = rows.join('\r\n') + '\r\n', name = baseName() + '_points.csv', msg = $('dlMsg');
     if (downloads) {
       try { await downloads.save({ filename: name, data: text }); msg.textContent = 'Points enregistrés : ' + name + ' (Nom, X, Y, Z).'; }

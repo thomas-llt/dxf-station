@@ -292,6 +292,16 @@ dialog.dlg .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: fle
 .info-box .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .info-box .acts .tb { font-size: 12px; padding: 4px 8px; }
 .info-box .muted { color: #9aa59f; font-size: 12px; }
+.info-box .ptform { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; margin-top: 4px; }
+.info-box .ptform label { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: #c3ccc7; }
+.info-box .ptform input { font: 600 13px var(--f-mono); width: 110px; padding: 4px 6px; border-radius: 4px; border: 1px solid rgba(255,255,255,.28); background: rgba(255,255,255,.08); color: #fff; }
+.info-box .ptform input:focus { outline: 2px solid #ff8a3d; outline-offset: 0; border-color: transparent; }
+.info-box .ptform input[id$="Z"], .info-box .ptform #pxX, .info-box .ptform #pxY { width: 92px; }
+.info-box .ptform .tb { font-size: 12px; padding: 5px 10px; }
+.info-box .pterr { color: #f07070; font-size: 12px; min-height: 0; }
+.info-box .pterr:empty { display: none; }
+.info-box .ptxy { border-top: 1px solid rgba(255,255,255,.14); padding-top: 5px; margin-top: 3px; }
+.info-box .ptxy summary { cursor: pointer; color: #ffb27a; font-weight: 600; }
 .dup-box { position: absolute; top: 80px; right: 10px; font-size: 12.5px; color: var(--canvas-fg); background: rgba(16,21,19,.92); border: 1px solid rgba(255,255,255,.14); padding: 8px 10px; border-radius: 5px; line-height: 1.5; max-width: min(330px, calc(100% - 20px)); }
 .dup-box b { font-family: var(--f-mono); font-size: 14px; font-weight: 500; }
 .dup-box .sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
@@ -330,7 +340,7 @@ dialog.dlg .row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: fle
 
 <div class="app">
   <header class="top">
-    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.21.3</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#e8590c"/><path d="M8 20h48M8 44h48M20 8v48M44 8v48" stroke="#fff" stroke-opacity=".38" stroke-width="2.5"/><circle cx="32" cy="32" r="11" fill="none" stroke="#fff" stroke-width="4.5"/><path d="M32 10v11M32 43v11M10 32h11M43 32h11" stroke="#fff" stroke-width="4.5" stroke-linecap="round"/><circle cx="32" cy="32" r="3.5" fill="#fff"/></svg><h1>Nettoyeur <span>DXF</span> station</h1><span class="ver" title="Version de l'outil">v2026.10.21.4</span></div>
     <div class="fileinfo" id="fileinfo"></div>
     <div class="spacer"></div>
     <input type="file" id="file" accept=".dxf,.DXF" multiple hidden>
