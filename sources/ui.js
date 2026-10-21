@@ -170,13 +170,22 @@
   const FOLD_KEY = 'dxfstation.folds.v1';
   const foldGet = () => { try { return JSON.parse(localStorage.getItem(FOLD_KEY) || '{}'); } catch (e) { return {}; } };
   const foldSet = (k, v) => { const m = foldGet(); m[k] = v; try { localStorage.setItem(FOLD_KEY, JSON.stringify(m)); } catch (e) {} };
+  // un seul volet ouvert à la fois : en ouvrir un referme les autres
+  const FOLDS = [['scaleBox', 'scale'], ['refSec', 'origin'], ['optsBox', 'opts']];
+  const setLay = open => { document.querySelector('.layers-sec').classList.toggle('closed', !open); $('layFold').setAttribute('aria-expanded', String(open)); };
+  function openOnly(k) {
+    for (const [id, key] of FOLDS) if (key !== k && $(id).open) $(id).open = false;
+    setLay(k === 'layers');
+  }
   {
-    const m = foldGet();
-    $('scaleBox').open = !!m.scale; $('refSec').open = !!m.origin; $('optsBox').open = !!m.opts;
-    for (const [id, k] of [['scaleBox', 'scale'], ['refSec', 'origin'], ['optsBox', 'opts']]) $(id).querySelector('summary').addEventListener('click', () => setTimeout(() => foldSet(k, $(id).open), 0));
-    const setLay = open => { document.querySelector('.layers-sec').classList.toggle('closed', !open); $('layFold').setAttribute('aria-expanded', String(open)); };
-    setLay(m.layers !== false);
-    const togLay = () => { const open = document.querySelector('.layers-sec').classList.contains('closed'); setLay(open); foldSet('layers', open); };
+    const m = foldGet(), only = typeof m.only === 'string' ? m.only : 'layers';
+    for (const [id, key] of FOLDS) $(id).open = key === only;
+    setLay(only === 'layers');
+    for (const [id, key] of FOLDS) {
+      $(id).addEventListener('toggle', () => { if ($(id).open) openOnly(key); });
+      $(id).querySelector('summary').addEventListener('click', () => setTimeout(() => foldSet('only', $(id).open ? key : ''), 0));
+    }
+    const togLay = () => { const open = document.querySelector('.layers-sec').classList.contains('closed'); if (open) openOnly('layers'); else setLay(false); foldSet('only', open ? 'layers' : ''); };
     $('layFold').addEventListener('click', togLay);
     $('layFold').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); togLay(); } });
   }
@@ -206,8 +215,10 @@
   $('homeDrop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickFiles(); } });
   async function loadFiles(files) {
     if (!files) { showHome(true); return; }
+    const dwgs = [...files].filter(f => /\.dwg$/i.test(f.name));
+    if (dwgs.length) { convertDwgs(dwgs); files = [...files].filter(f => !/\.dwg$/i.test(f.name)); if (!files.length) return; }
     files = [...files].filter(f => /\.dxf$/i.test(f.name));
-    if (!files.length) { $('dlMsg').textContent = $('homeMsg').textContent = 'Seuls les fichiers .dxf sont acceptés.'; return; }
+    if (!files.length) { $('dlMsg').textContent = $('homeMsg').textContent = 'Seuls les fichiers .dxf (ou .dwg à convertir) sont acceptés.'; return; }
     $('homeMsg').textContent = '';
     const fresh = !plans.some(p => !p.st.sample);
     if (fresh) files.sort((a, b) => floorRank(a.name) - floorRank(b.name) || a.name.localeCompare(b.name, 'fr', { numeric: true }));
@@ -247,7 +258,7 @@
   function addPlanIn(buf, name, sample, fh, doc) {
     S.view = { s: 1, tx: 0, ty: 0 }; S.userView = false; S.info = null; S.xf = null;
     if (S.ref && S.ref.auto) S.ref = null;
-    S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null; S.fh = fh || null; S.fhOk = false;
+    S.doc = doc; S.name = name; S.size = buf.byteLength; S.sample = !!sample; S.outBase = null; S.fh = fh || null; S.fhOk = !!(fh && OWNED.has(fh));
     rebuild(true); S.savedAt = S.hist ? S.hist[S.histPos] : null; savePlan();
     return cur;
   }
@@ -999,7 +1010,7 @@
   $('ghostBtn').onclick = () => { S.ghost = !S.ghost; $('ghostBtn').classList.toggle('on', S.ghost); draw(); };
   window.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's') { // même dans un champ : sinon le navigateur enregistre la page web
-      e.preventDefault(); if (!S.ex || !$('home').hidden || $('saveDlg').open) return;
+      e.preventDefault(); if (!S.ex || !$('home').hidden || $('saveDlg').open || $('dwgDlg').open) return;
       if (document.activeElement && document.activeElement.matches('input, select, textarea')) document.activeElement.blur();
       if (e.shiftKey || inArtifact) $('dlBtn').click(); else saveSame(); return;
     }
@@ -1920,6 +1931,93 @@
   window.addEventListener('beforeunload', e => { savePlan(); if (anyDirty()) { e.preventDefault(); e.returnValue = ''; } });
   $('saveBtn').onclick = saveSame;
 
+  // ---------- Conversion DWG → DXF (LibreDWG en WebAssembly, chargé au premier DWG) ----------
+  // Le DWG n'est jamais affiché : on le convertit, on enregistre le DXF obtenu, puis on ouvre ce DXF.
+  const OWNED = new WeakSet(); // fichiers créés par l'outil : « Enregistrer » les écrase sans demander
+  const DWG_VER = { AC1012: 'R13', AC1014: 'R14', AC1015: '2000', AC1018: '2004', AC1021: '2007', AC1024: '2010', AC1027: '2013', AC1032: '2018' };
+  let dwgMod = null;
+  async function loadDwg() {
+    if (dwgMod) return dwgMod;
+    if (inArtifact || !/^https?:$/.test(location.protocol)) throw new Error('offline-file');
+    const mod = await import(new URL('dwg/libredwg-web.js', location.href).href);
+    dwgMod = await mod.default({ print: () => {}, printErr: () => {} });
+    return dwgMod;
+  }
+  function dwgToDxf(m, u8) {
+    const fin = 'in.dwg', fout = 'out.dxf', rm = f => { try { if (m.FS.analyzePath(f, false).exists) m.FS.unlink(f); } catch (e) {} };
+    try {
+      m.FS.writeFile(fin, u8);
+      const err = m.dwg_write_dxf(fin, fout);
+      if (!m.FS.analyzePath(fout, false).exists || err >= 128) throw new Error('code ' + err);
+      return m.FS.readFile(fout);
+    } finally { rm(fin); rm(fout); }
+  }
+  const dwgDlg = (title, txt, state) => {
+    $('dwgDlgTitle').textContent = title; $('dwgDlgTxt').textContent = txt;
+    $('dwgProg').hidden = state !== 'busy'; $('dwgDlgBtns').hidden = state !== 'done'; $('dwgDlgErr').hidden = state !== 'error';
+    if (!$('dwgDlg').open) $('dwgDlg').showModal();
+  };
+  const dwgChoice = () => new Promise(res => { $('dwgDlgSave').onclick = () => res('save'); $('dwgDlgOpen').onclick = () => res('open'); $('dwgDlg').oncancel = e => { e.preventDefault(); res('open'); }; });
+  $('dwgDlgClose').onclick = () => $('dwgDlg').close();
+  async function convertDwgs(files) {
+    const out = [], errors = [];
+    for (let k = 0; k < files.length; k++) {
+      const f = files[k], dxfName = f.name.replace(/\.dwg$/i, '') + '.dxf', n = files.length > 1 ? ' (' + (k + 1) + '/' + files.length + ')' : '';
+      try {
+        dwgDlg('Conversion DWG → DXF' + n, dwgMod ? 'Conversion de « ' + f.name + ' » (' + fmtSize(f.size) + ')…' : 'Chargement du convertisseur DWG (la première fois, environ 4 Mo à télécharger)…', 'busy');
+        await new Promise(r => setTimeout(r, 40));
+        const m = await loadDwg();
+        dwgDlg('Conversion DWG → DXF' + n, 'Conversion de « ' + f.name + ' » (' + fmtSize(f.size) + ')…', 'busy');
+        await new Promise(r => setTimeout(r, 40));
+        const u8 = new Uint8Array(await f.arrayBuffer());
+        const ver = DWG_VER[String.fromCharCode(...u8.slice(0, 6))];
+        const dxf = dwgToDxf(m, u8);
+        DXF.parse(dxf.buffer.slice(dxf.byteOffset, dxf.byteOffset + dxf.byteLength)); // contrôle : le DXF obtenu doit se relire
+        const blob = new Blob([dxf], { type: 'application/dxf' }), canPick = !!window.showSaveFilePicker;
+        $('dwgDlgSave').textContent = canPick ? 'Enregistrer le DXF à côté du DWG' : 'Télécharger le DXF';
+        dwgDlg('DWG converti' + n, '« ' + f.name + ' »' + (ver ? ' (DWG ' + ver + ')' : '') + ' a été converti en « ' + dxfName + ' » (' + fmtSize(dxf.byteLength) + '). Le DWG d\'origine n\'est pas modifié.', 'done');
+        $('dwgDlgSave').focus();
+        const choice = await dwgChoice();
+        let file = new File([blob], dxfName, { type: 'application/dxf' });
+        if (choice === 'save') {
+          if (canPick) {
+            try {
+              const src = HMAP.get(f), opts = { suggestedName: dxfName, types: [{ description: 'Plan DXF', accept: { 'application/dxf': ['.dxf'] } }] };
+              if (src) opts.startIn = src;
+              let hd; try { hd = await window.showSaveFilePicker(opts); } catch (e) { if (e && e.name === 'AbortError') throw e; delete opts.startIn; hd = await window.showSaveFilePicker(opts); }
+              const w = await hd.createWritable(); await w.write(blob); await w.close();
+              file = new File([blob], hd.name, { type: 'application/dxf' }); HMAP.set(file, hd); OWNED.add(hd);
+            } catch (e) { if (!(e && e.name === 'AbortError')) errors.push(dxfName + ' non enregistré (' + (e && e.message || e) + ')'); }
+          } else {
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = dxfName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+          }
+        }
+        out.push(file);
+      } catch (e) {
+        const why = e && e.message === 'offline-file' ? 'la conversion DWG fonctionne dans la version en ligne ou installée de l\'outil (thomas-llt.github.io/dxf-station), pas dans le fichier HTML ouvert en double-clic.'
+          : /fetch|import|network|Failed/i.test(e && e.message || '') && !dwgMod ? 'le convertisseur n\'a pas pu être téléchargé. Ouvre l\'outil une fois avec internet pour l\'avoir ensuite hors ligne.'
+          : 'ce DWG n\'a pas pu être lu (version trop récente ou fichier abîmé). Demande un DXF au bureau d\'études.';
+        errors.push(f.name + ' : ' + why);
+      }
+    }
+    if (errors.length) dwgDlg('Conversion DWG', errors.join('\n'), 'error'); else if ($('dwgDlg').open) $('dwgDlg').close();
+    if (out.length) loadFiles(out);
+  }
+  async function pickDwg() {
+    if (window.showOpenFilePicker && !inArtifact) {
+      try {
+        const hs = await window.showOpenFilePicker({ multiple: true, types: [{ description: 'Plans DWG', accept: { 'application/acad': ['.dwg'] } }] });
+        const fs = await Promise.all(hs.map(async hd => { const f = await hd.getFile(); HMAP.set(f, hd); return f; }));
+        convertDwgs(fs); return;
+      } catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    $('dwgFile').click();
+  }
+  $('dwgBtn').onclick = pickDwg;
+  $('dwgDrop').onclick = e => { e.stopPropagation(); pickDwg(); };
+  $('dwgDrop').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickDwg(); } });
+  $('dwgFile').addEventListener('change', () => { const fs = [...$('dwgFile').files]; $('dwgFile').value = ''; if (fs.length) convertDwgs(fs); });
+
   $('dlAllBtn').onclick = async () => {
     const msg = $('dlMsg'); msg.textContent = 'Préparation des ' + plans.length + ' plans…';
     await new Promise(r => setTimeout(r, 20));
@@ -1950,9 +2048,9 @@
   $('file').addEventListener('change', () => { const fs = [...$('file').files]; $('file').value = ''; if (fs.length) loadFiles(fs); });
   let dragDepth = 0;
   window.addEventListener('dragenter', e => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { dragDepth++; if ($('home').hidden) $('drop').hidden = false; else $('homeDrop').classList.add('over'); e.preventDefault(); } });
-  window.addEventListener('dragover', e => e.preventDefault());
-  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) { $('drop').hidden = true; $('homeDrop').classList.remove('over'); } });
-  window.addEventListener('drop', async e => { e.preventDefault(); dragDepth = 0; $('drop').hidden = true; $('homeDrop').classList.remove('over');
+  window.addEventListener('dragover', e => { e.preventDefault(); if (!$('home').hidden) { const d = !!(e.target.closest && e.target.closest('#dwgDrop')); $('dwgDrop').classList.toggle('over', d); $('homeDrop').classList.toggle('over', !d); } });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) { $('drop').hidden = true; $('homeDrop').classList.remove('over'); $('dwgDrop').classList.remove('over'); } });
+  window.addEventListener('drop', async e => { e.preventDefault(); dragDepth = 0; $('drop').hidden = true; $('homeDrop').classList.remove('over'); $('dwgDrop').classList.remove('over');
     const items = [...(e.dataTransfer.items || [])].filter(it => it.kind === 'file');
     const hp = items.map(it => it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : Promise.resolve(null)); // à demander avant tout « await »
     const fs = [...e.dataTransfer.files]; if (!fs.length) return;

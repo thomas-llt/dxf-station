@@ -13,6 +13,8 @@ Le site publié (`../index.html`) est **généré** à partir de ces fichiers : 
 
 Les fichiers à la racine du dépôt (`manifest.webmanifest`, `sw.js`, icônes PNG, `favicon.ico`) rendent le site installable et utilisable hors connexion. Ils changent rarement.
 
+Le dossier `dwg/` (à la racine) contient le convertisseur DWG → DXF : LibreDWG compilé en WebAssembly (paquet npm `@mlightcad/libredwg-web`, licence GPL v3, voir `dwg/LISEZMOI.txt`). La page ne le télécharge qu'au premier DWG converti (environ 4 Mo compressé) ; il ne marche que dans la version en ligne ou installée, pas dans le fichier autonome.
+
 Le dossier `windows/` contient le kit qui pose l'icône sur les fichiers .dxf ; `Icone-DXF-Windows.zip` (à la racine) en est la version à télécharger. Si on modifie un fichier de `windows/`, il faut refaire le zip.
 
 ## Construire

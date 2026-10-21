@@ -1,0 +1,15 @@
+Convertisseur DWG -> DXF du Nettoyeur DXF Station
+=================================================
+
+Ces fichiers sont LibreDWG (https://www.gnu.org/software/libredwg/), compilé
+pour le navigateur (WebAssembly) par le projet libredwg-web
+(https://github.com/mlightcad/libredwg-web, paquet npm @mlightcad/libredwg-web 0.8.1).
+
+- libredwg-web.js   : code de chargement
+- libredwg-web.wasm : LibreDWG compilé
+
+Licence : GNU GPL version 3 ou ultérieure (texte complet dans COPYING).
+Les sources sont disponibles sur les deux adresses ci-dessus.
+
+La page ne télécharge ces fichiers qu'au premier DWG converti ; ils sont
+ensuite gardés en cache pour fonctionner hors connexion.
