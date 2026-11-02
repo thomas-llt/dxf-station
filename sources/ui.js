@@ -851,18 +851,22 @@
       if (moved && dragStart.rect) { S.rect = [[dragStart.x, dragStart.y], [e.offsetX, e.offsetY]]; draw(); }
       else if (moved) { S.userView = true; S.view.tx = dragStart.tx + dx; S.view.ty = dragStart.ty + dy; draw(); }
     }
-    const [wx, wy] = toWorld(e.offsetX, e.offsetY);
-    const [ox, oy] = S.origin, f = S.factor;
+    if (!moved || !dragStart) hoverAt(e.offsetX, e.offsetY, e.shiftKey, e.pointerType, !!dragStart);
+  });
+  // viseur, accroche et aperçus à la position de la souris (après un déplacement ou un zoom aussi)
+  function hoverAt(sx, sy, shift, ptype, pressed) {
+    const [wx, wy] = toWorld(sx, sy);
+    const [ox, oy] = S.origin;
     { const m = toRefM(wx + ox, wy + oy); $('readout').textContent = 'X ' + fmt(m[0], 3) + '   Y ' + fmt(m[1], 3) + ' m'; }
-    if (S.mode === 'line' && S.snap && !moved) { S.shift = e.shiftKey; lineHover(wx, wy); draw(); }
-    if (S.mode === 'xf' && S.snap && !moved) { const sp = snapAt(wx, wy, 12 / S.view.s); S.hover = sp ? [sp.x, sp.y] : null; S.hoverKind = sp ? sp.kind : null; S.cur = sp ? [sp.x, sp.y] : [wx, wy]; draw(); }
-    if ((S.measure || S.mode === 'point') && S.snap && !moved) {
+    if (S.mode === 'line' && S.snap) { S.shift = shift; lineHover(wx, wy); draw(); }
+    if (S.mode === 'xf' && S.snap) { const sp = snapAt(wx, wy, 12 / S.view.s); S.hover = sp ? [sp.x, sp.y] : null; S.hoverKind = sp ? sp.kind : null; S.cur = sp ? [sp.x, sp.y] : [wx, wy]; draw(); }
+    if ((S.measure || S.mode === 'point') && S.snap) {
       const sp = snapAt(wx, wy, 12 / S.view.s); S.hover = sp ? [sp.x, sp.y] : (S.measure ? [wx, wy] : null); S.hoverKind = sp ? sp.kind : null;
       if (S.measure && S.m1 && !S.m2) showMeasure(S.m1, S.hover, true);
       draw();
     }
-    if ((S.erase || S.mode === 'nav') && S.hit && !moved && !dragStart && e.pointerType === 'mouse') { const hp = pick(wx, wy, 8 / S.view.s); if (hp !== S.hoverPrim) { S.hoverPrim = hp; draw(); } }
-  });
+    if ((S.erase || S.mode === 'nav') && S.hit && !pressed && ptype === 'mouse') { const hp = pick(wx, wy, 8 / S.view.s); if (hp !== S.hoverPrim) { S.hoverPrim = hp; draw(); } }
+  }
   cv.addEventListener('pointerleave', () => { if (S.hoverPrim) { S.hoverPrim = null; draw(); } });
   const endPtr = e => {
     pointers.delete(e.pointerId); if (pointers.size < 2) pinch = null;
@@ -884,7 +888,7 @@
       const sp = snapAt(wx, wy, tolPx / S.view.s);
       if (sp) createPoint(sp.x, sp.y, sp.kind); else pointMsg('Pas de croisement ici. Approche le viseur d\'un croisement de traits : il devient jaune quand il accroche.');
     }
-    if (!moved && S.measure && pointers.size === 0) {
+    if (!moved && S.measure && pointers.size === 0 && dragStart && e.button === 0) {
       const [wx, wy] = toWorld(e.offsetX, e.offsetY); const sp = snapAt(wx, wy, tolPx / S.view.s);
       const pt = sp ? [sp.x, sp.y] : [wx, wy];
       if (!S.m1 || S.m2) { S.m1 = pt; S.m2 = null; $('measureBox').hidden = true; } else { S.m2 = pt; showMeasure(S.m1, S.m2, false); }
@@ -902,12 +906,15 @@
         selChanged();
       }
     }
-    dragStart = null;
+    const wasMoved = moved; dragStart = null; moved = false;
+    if (wasMoved && pointers.size === 0 && e.pointerType === 'mouse') hoverAt(e.offsetX, e.offsetY, e.shiftKey, e.pointerType, false); // après un déplacement du plan : l'accroche reprend tout de suite
   };
   cv.addEventListener('pointerup', endPtr); cv.addEventListener('pointercancel', endPtr);
   cv.addEventListener('wheel', e => {
     e.preventDefault(); const k = Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0015));
-    S.view.tx = e.offsetX - (e.offsetX - S.view.tx) * k; S.view.ty = e.offsetY - (e.offsetY - S.view.ty) * k; S.view.s *= k; S.userView = true; draw();
+    S.view.tx = e.offsetX - (e.offsetX - S.view.tx) * k; S.view.ty = e.offsetY - (e.offsetY - S.view.ty) * k; S.view.s *= k; S.userView = true;
+    if (!dragStart) hoverAt(e.offsetX, e.offsetY, e.shiftKey, 'mouse', false); // le viseur et l'aperçu suivent le zoom
+    draw();
   }, { passive: false });
   cv.addEventListener('dblclick', () => { if (S.mode === 'line') { if (S.lineTool === 'chain' && S.chainN) endChain(''); return; } fit(); });
   function showMeasure(a, b, live) {
